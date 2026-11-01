@@ -17,6 +17,22 @@ muts = [
  ("review not required for breach", "covenant_audit/models.py", "if self.status in must_review and not self.needs_review:", "if False:"),
  ("fact value not matched to quote", "covenant_audit/verification.py", "if fact.value not in {amount * fact.reported_scale for amount in printed}:", "if False:"),
  ("tie-out components ungrounded OK", "covenant_audit/verification.py", "if total != tie_out.expected:", "if False:"),
+ ("approval signature unchecked", "covenant_audit/approval.py", "if not signer.verify(attestation_payload(att), att.signature):", "if False:"),
+ ("attestation spec hash unchecked", "covenant_audit/approval.py", "if att.spec_hash != spec.content_hash():", "if False:"),
+ ("approval decision unchecked", "covenant_audit/approval.py", "if att.decision != \"approved\":", "if False:"),
+ ("outer approval fields unchecked", "covenant_audit/approval.py", "if outer != signed:", "if False:"),
+ ("self-approval allowed (signer)", "covenant_audit/approval.py", "if approval.approver_id == spec.extractor_run_id or not is_human_identity(approval.approver_id):", "if False:"),
+ ("approvals not checked by check_spec", "covenant_audit/verification.py", "verify_spec_approvals(spec, self.approval_signer)", "pass"),
+ ("forbidden model fields accepted", "covenant_audit/extraction.py", "if key in FORBIDDEN_KEYS:", "if False:"),
+ ("claimed offsets unchecked", "covenant_audit/extraction.py", "if not (isinstance(start, int) and isinstance(end, int)) or text[start:end] != quote:", "if False:"),
+ ("claimed document hash unchecked", "covenant_audit/extraction.py", "if claimed_hash is not None and claimed_hash != doc.sha256:", "if False:"),
+ ("invented quote accepted", "covenant_audit/extraction.py", "        if count == 0:", "        if False:"),
+ ("unresolved items do not block", "covenant_audit/extraction.py", "reasons += [f\"unresolved ({u.kind}): {u.description}\" for u in self.unresolved]", "pass"),
+ ("known amendments ignored", "covenant_audit/review.py", "missing = tuple(a for m in manifests if m.doc_id in read for a in m.known_amendments if a.doc_id not in read)", "missing = ()"),
+ ("semantic literal check off", "covenant_audit/spec_checks.py", "if ok is False:\n                    findings.append(Finding(\"error\", \"literal_not_in_quote\"", "if False:\n                    findings.append(Finding(\"error\", \"literal_not_in_quote\""),
+ ("review not re-verifying quotes", "covenant_audit/review.py", "spec = verifier.verify_spec(outcome.spec)", "spec = outcome.spec"),
+ ("IfGt always picks then", "covenant_audit/arith.py", "return operands[2] if operands[0] > operands[1] else operands[3]", "return operands[2]"),
+ ("confirmation hash unchecked", "covenant_audit/review.py", "if confirm.strip().lower() != expected:", "if False:"),
 ]
 survived=[]
 import os

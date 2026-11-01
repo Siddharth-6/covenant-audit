@@ -1,0 +1,21 @@
+{
+  "doc_id": "VIAD-CA-2021",
+  "company": "Viad Corp (now Pursuit Attractions and Hospitality, Inc.)",
+  "cik": "0000884219",
+  "form": "8-K",
+  "exhibit": "EX-10.1",
+  "accession_number": "0001564590-21-039835",
+  "filed": "2021-08-02",
+  "filing_url": "https://www.sec.gov/Archives/edgar/data/884219/000156459021039835/vvi-ex101_28.htm",
+  "description": "Credit Agreement dated as of July 30, 2021 among Viad Corp, the lenders party thereto and Bank of America, N.A., as Administrative Agent",
+  "raw_sha256": "f493db74621dc4e035fb0cf0bed57d962793ee315180f5ce1944572058586433",
+  "canonical_sha256": "e1569053d9af627502dc4ac912acfda95955219914011e11e717cef97fc40a76",
+  "page_count": 189,
+  "known_amendments": [
+    {
+      "doc_id": "VIAD-FA1-2022",
+      "description": "First Amendment dated as of March 23, 2022, amending and restating Sections 7.10(a), (b) and (c)",
+      "dated": "2022-03-23"
+    }
+  ]
+}

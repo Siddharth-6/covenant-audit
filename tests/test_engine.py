@@ -322,12 +322,25 @@ def test_ifgt_boundary_is_strictly_greater(world):
 
 
 def test_ifgt_trace_is_rechecked_by_the_result_validator(world):
-    """Expected: a result whose ifgt step claims the other branch is rejected.
-    Why: arith.apply_op re-derives the selected branch from the recorded operands."""
-    spec = world.build_spec()
-    good = _good_result(world)
-    from covenant_audit.arith import apply_op
+    """Expected: a result whose ifgt step records the wrong branch is rejected; the right branch is accepted.
+    Why: arith.apply_op re-derives the selected branch from the recorded operands, as it does for every other op."""
+    from covenant_audit.models import Comparison, TraceStep, classify
 
-    assert apply_op("ifgt", (D(1), D(2), D(10), D(20))) == D(20)
-    assert apply_op("ifgt", (D(3), D(2), D(10), D(20))) == D(10)
-    assert spec and good
+    from .test_models import make_result
+
+    def trace(selected):
+        leaf = lambda i, v: TraceStep(step_id=i, node_id=f"n{i}", label="x", op="lit", value=D(v))  # noqa: E731
+        ops = (D("3"), D("2"), D("1.5"), D("2.5"))
+        return (
+            leaf(1, "3"), leaf(2, "2"), leaf(3, "1.5"), leaf(4, "2.5"),
+            TraceStep(step_id=5, node_id="c", label="ifgt", op="ifgt", operand_step_ids=(1, 2, 3, 4), operand_values=ops, value=selected),
+            leaf(6, "1"),
+            TraceStep(step_id=7, node_id="r", label="ratio", op="div", operand_step_ids=(5, 6), operand_values=(selected, D("1")), value=selected),
+        )
+
+    ratio = D("1.5")
+    status, head, pct = classify(ratio, D("4.50"), Comparison.LE, D("0.10"))
+    base = dict(ratio_raw=ratio, ratio_tested=ratio, ratio_decimal_places=None, headroom_abs=head, headroom_pct=pct, status=status)
+    assert make_result(**base, trace=trace(D("1.5"))).ratio_raw == ratio  # 3 > 2 selects `then`
+    with pytest.raises(ValidationError, match="recomputed"):
+        make_result(**base, trace=trace(D("2.5")))  # claims the `otherwise` branch

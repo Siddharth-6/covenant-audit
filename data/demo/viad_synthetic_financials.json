@@ -1,0 +1,26 @@
+{
+  "NOTE": "SYNTHETIC borrower data, invented for this demonstration. Not Viad's financials. Amounts in USD millions.",
+  "test_date": "2022-12-31",
+  "values_millions": {
+    "consolidated_net_income": "70",
+    "interest_expense": "25",
+    "income_taxes": "20",
+    "depreciation_and_amortization": "40",
+    "other_enumerated_addbacks": "18",
+    "dividends_from_non_restricted_persons": "3",
+    "share_of_ebitda_of_those_persons": "5",
+    "gaap_change_loss_gain": "0",
+    "other_noncash_items_and_earnout": "6",
+    "run_rate_cost_savings": "40",
+    "transaction_and_restructuring_charges": "4",
+    "business_interruption_proceeds": "0",
+    "distributions_to_noncontrolling_holders": "2",
+    "borrowed_money_debt": "800",
+    "finance_lease_and_construction_debt": "80",
+    "new_material_project_excluded_obligations": "30",
+    "guarantees_of_third_party_debt": "5",
+    "defeased_or_escrowed_indebtedness": "0",
+    "unrestricted_cash": "120",
+    "revolving_and_swing_line_outstanding": "25"
+  }
+}

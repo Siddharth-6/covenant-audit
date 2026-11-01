@@ -259,8 +259,13 @@ def test_12_malicious_instruction_in_a_borrower_document_cannot_act_or_bypass_ve
     assert r.status is S.INDETERMINATE and any("no seal" in x for x in r.reasons)
     honest = run_covenant_test(spec, facts.values(), Q2, env.world.policy, env.world.verifier, now=NOW)
     assert honest.status is S.PASS and honest.ratio_tested == D("4.00")
-    # (e) there is no tool-execution capability to abuse
+    # (e) there is no tool-execution capability to abuse. The deterministic core imports no process or
+    # network module; only the two I/O modules (document download, model call) may import the specific
+    # modules they need, and neither imports a process-execution module.
     import pathlib, re
     banned = re.compile(r"^\s*(import|from)\s+(subprocess|socket|requests|urllib|http|os|shutil|ctypes)\b", re.M)
+    allowed_io = {"ingest.py": {"urllib"}, "llm.py": {"urllib", "os"}, "cli.py": {"os"}}
     for path in (pathlib.Path(__file__).parent.parent / "covenant_audit").glob("*.py"):
-        assert not banned.search(path.read_text()), f"{path.name} imports a process/network module"
+        found = {m.group(2) for m in banned.finditer(path.read_text())}
+        assert found <= allowed_io.get(path.name, set()), f"{path.name} imports {found - allowed_io.get(path.name, set())}"
+        assert not found & {"subprocess", "socket", "shutil", "ctypes"}, f"{path.name} imports a process-execution module"

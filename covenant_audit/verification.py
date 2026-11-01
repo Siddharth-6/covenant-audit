@@ -163,6 +163,9 @@ def _amounts_in(quote: str) -> set[Decimal]:
     return found
 
 
+amounts_in = _amounts_in  # public alias: numbers printed in a quotation
+
+
 class SourceVerifier:
     def __init__(
         self,
@@ -331,8 +334,6 @@ def approve_spec(spec: CovenantSpec, approval: Approval, verifier: SourceVerifie
     verifier.check_spec(spec, require_approved=False)
     if spec.status is not SpecStatus.VERIFIED:
         raise VerificationError(f"only VERIFIED specs can be approved, got {spec.status.value}")
-    if approval.approver_id == spec.extractor_run_id:
-        raise VerificationError("the extraction run cannot approve its own output")
     if approval.attestation is not None:
         raise VerificationError("a caller cannot supply an attestation; only the trusted signer mints it")
     try:

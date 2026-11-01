@@ -1,127 +1,194 @@
 # Auditable Covenant Compliance
 
-> **Compile the contract once, compute it deterministically every quarter.**
+> **The LLM interprets the contract. A trusted verifier checks its evidence. A human approves the specification. A deterministic engine is the only thing that computes the ratio and classifies the covenant.**
 
-A take-home prototype for commercial-loan financial-covenant monitoring. An LLM is allowed to *interpret* a credit
-agreement into a typed `CovenantSpec`; a human approves that spec; from then on a deterministic Python engine computes the
-covenant every quarter, with a trace from every number back to a page, offset and quotation. **The LLM never computes a
-number that decides the result.**
+A take-home prototype for commercial-loan financial-covenant monitoring. It now covers the whole path on a **real public SEC credit agreement**: ingestion, deterministic clause selection, LLM extraction into a typed `CovenantSpec`, source verification, a signed human approval, effective-dated registration, and a deterministic, traced calculation recorded in a hash-chained ledger.
 
-All data in this repository is **synthetic** (an invented credit agreement, amendment and borrower statements). No real
-client or lender data is used.
+Borrower financial data is **synthetic**. The credit agreement is real and public.
 
-**What is implemented, and what is not.** The deterministic core is implemented and tested: typed models, trusted
-verification, the AST evaluator, the pipeline, effective-dated versioning, invalidation and a hash-chained ledger. **No LLM
-extraction is implemented.** The package defines the schemas an extractor must satisfy and the untrusted-input boundary it
-passes through (`parse_untrusted_spec`, `parse_untrusted_facts`), but nothing in this repository calls a model. See
-[Limitations](#10-limitations-and-known-failure-cases).
+## Read this first: what ran, and what did not
 
-## 1. Problem overview
+| | Status |
+|---|---|
+| Deterministic core (models, AST evaluator, pipeline, registry, ledger) | **Implemented and tested** |
+| SEC document ingestion, canonicalisation, hash-pinned sources | **Implemented**, reproducible from EDGAR (`tools/build_sources.py --check`) |
+| Deterministic clause selection, extraction parsing, quote resolution, semantic checks, reviewer view, approval attestation | **Implemented and tested** (offline) |
+| OpenRouter provider (timeouts, 429 retry, truncation and empty-answer handling, no tools offered) | **Implemented; tested only with a fake transport.** It has **not** been run against the live OpenRouter API in this repository: no API key was available |
+| A genuine LLM extraction of the Viad covenant | **Not produced.** There is no live-model output in this repo |
+| `extract --provider recorded` | **Simulated stand-in.** It replays `data/extraction/viad_reference_response.json`, a reference **hand-authored by the coding agent** (script: `tools/author_reference_extraction.py`) from the real text. It is labelled `NOT A LIVE MODEL CALL` everywhere it appears |
+| Human approval in the transcript below | **Simulated**: entered on the command line as `demo.reviewer@example.com` to show the mechanism. It is not a real credit officer's review |
+| Approval signing and key custody | **Development only** (in-process HMAC, local key file). Not identity authentication, not production signing |
 
-Each quarter an analyst must find the financial covenants in a 100-300 page credit agreement, apply every amendment, pull
-inputs from the borrower's statements, recompute the ratios under the contract's own definitions, and flag breaches and thin
-headroom. The ratio arithmetic is trivial (net debt / EBITDA). The risk is the *definition*: "Consolidated EBITDA" differs
-per agreement, add-backs and cash netting are capped, thresholds step down, and amendments redefine terms.
+To get a real extraction: set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` and run `extract --provider openrouter` (section 6). Compare the result with the reference; expect a real model to differ, and let the verifier and the reviewer judge it.
 
-One LLM call that returns the ratio is unauditable. Regex and templates cannot read bespoke definitions. So the design splits
-the work: **probabilistic interpretation happens once per contract version and is human-approved; arithmetic is deterministic and
-repeatable.**
-
-## 2. Architecture
+## 1. Architecture
 
 ```
- PROBABILISTIC (not implemented here)          DETERMINISTIC (implemented)                    HUMAN
- ------------------------------------          -----------------------------------            ---------------
- Extractor: contract text -> CovenantSpec ---> parse_untrusted_spec  (DRAFT only)
-                                               SourceVerifier.verify_spec (ground every quote, seal) 
-                                                                                              approve_spec (gate 1)
-                                               SpecRegistry.register (effective-dated versions)
- Extractor: statements -> FinancialFacts ----> parse_untrusted_facts (no seals, no tool fields)
-                                               SourceVerifier.verify_fact (ground, printed amount,
-                                                  grounded tie-outs) -> sealed fact
-                                               run_covenant_test: admit sealed facts only
-                                                 -> Evaluator (AST, Decimal) -> rounding -> classify()
-                                                 -> CovenantTestResult (validated, traced)
-                                               Ledger.append_result (hash chain)  ------------> review of BREACH /
-                                               Ledger.record_review  <----------------------- INDETERMINATE / thin /
-                                                                                                sampled passes
+public SEC HTML --ingest--> canonical page text + SHA-256   (ingest.py, data/sources/)
+      |
+      +--> deterministic clause selection: covenant pages, defined-term closure, rounding clause   (clauses.py)
+      |
+      +--> PROMPT (rules + page-labelled excerpts, no tools) --> LLM provider --> UNTRUSTED TEXT     (llm.py, extraction.py)
+                                                                      |
+   forbidden-field scan -> quote resolution by software (page+quote -> offsets+hash) -> CovenantSpec validators
+                                                                      |   issues / unresolved items block approval
+                                                                 DRAFT spec
+      SourceVerifier.verify_span / verify_spec (independent re-check, seal)  -> VERIFIED spec     (verification.py)
+      semantic checks (threshold in its quote, constant in its quote, direction, unused inputs)   (spec_checks.py)
+      reviewer view generated from the AST by code (no model)                                     (explain.py, review.py)
+                                                                      |
+                              HUMAN: type the spec hash to approve  -->  signed ApprovalAttestation   (approval.py)
+                                                                      |
+                           SpecRegistry.register (re-verifies seal AND attestation)  -> approved, effective-dated spec
+                                                                      |
+   synthetic sealed facts -> Evaluator (Decimal AST, trace) -> rounding -> classify() -> result -> hash-chained Ledger
 ```
 
-The engineering guarantees, and where they are enforced and tested:
+The model's only influence on a number is the *text of the spec* a human approved. It never sees borrower data, computes nothing, and has no tool to call.
+
+Core guarantees and where they are enforced:
 
 | Guarantee | Enforced in | Tested in |
 |---|---|---|
-| No float ever enters a financial value | `base.Money` rejects floats; `arith` uses `Decimal` under an explicit 50-digit context | `test_models`, `test_engine` |
-| No `eval`, no generated code | closed AST; `Evaluator` rejects unknown node types; source scan test | `test_engine` |
-| An extracted quote is not a verified quote | `SourceSpan` has no verified flag; only `SourceVerifier` mints `VerifiedSpan`/seals | `test_verification` |
-| A tie-out cannot be told it passed | `TieOutCheck.passed` is a derived property; `passed=` input is rejected | `test_models`, `test_verification` |
-| The engine accepts only approved, unmodified specs and verified facts | HMAC seals checked at the engine boundary (`check_spec`, `check_fact`) | `test_verification`, `test_pipeline` |
-| Status, headroom, rounding and trace are re-derived | `CovenantTestResult` validators; one `classify()` | `test_models`, `test_engine` |
-| Bank policy is separate from contract terms and pinned per result | `BankPolicy` + `policy_hash` in every result | `test_pipeline`, `test_scenarios` |
-| Amendments and restatements are different events | `SpecRegistry` (versions) vs `Ledger` invalidation events | `test_versioning_ledger`, `test_scenarios` |
-| History cannot be silently edited | frozen models with tuples; append-only hash-chained ledger | `test_versioning_ledger` |
+| No float enters a financial value; no `eval` or generated code | `base.Money`, `arith`, closed AST, source scan test | `test_models`, `test_engine` |
+| An extracted quote is not a verified quote; the model cannot supply `verified`, a seal, an approval, offsets we trust or a status | `SourceSpan` has no verified flag; `FORBIDDEN_KEYS`; offsets computed by software | `test_verification`, `extraction/test_extraction_scenarios` |
+| The engine runs only sealed, approved specs whose **approval attestation verifies**, and sealed facts | `check_spec`, `check_fact`, `verify_approval` | `test_approval`, `test_pipeline` |
+| Status, headroom, rounding and every trace step are re-derived | `CovenantTestResult` validators, one `classify()` | `test_models`, `test_engine` |
+| Policy is separate from contract terms and pinned per result | `BankPolicy`, `policy_hash` | `test_pipeline` |
+| Amendments, restatements, revocations are different events | `SpecRegistry` vs `Ledger` events | `test_versioning_ledger` |
+| Unresolved items, failed verification, unread amendments and semantic errors block approval | `ReviewPackage.blocking`, `approve()` | `extraction/test_extraction_scenarios` |
+| History cannot be silently edited | frozen models, tuples, hash-chained ledger | `test_versioning_ledger` |
 
-### Why seals instead of a `verified` flag
+## 2. Implementation status (detail)
 
-A Pydantic model can always be constructed directly, so `verified=True` proves nothing. Verification instead produces a keyed
-HMAC (`Seal`) over the artefact's content hash. The engine re-checks the seal when it receives a spec or fact, so a hand-built
-artefact, or one edited after verification, is rejected. The honest limit: in this prototype the verifier is an in-process
-object holding a random key, so code running in the same process could mint seals. In production the key belongs in a KMS/HSM
-behind a separate service.
+**Implemented features**: everything in the "Implemented" rows above, plus the `IfGt` conditional AST node (needed for the real clause "if revolver borrowings exceed $10,000,000, netted cash is capped at $50,000,000"), `scope_notes` on specs (what is deliberately not modelled), `rounding_source`, signed approval records in the ledger (rejections are signed and saved by the CLI, and the ledger can store them), and the CLI.
 
-### Contract terms vs bank policy
+**Simulated prototype components**: the recorded reference extraction; the command-line approval used in the demo transcript; the development signer and verifier keys (random bytes in `.covenant_state/dev_keys.json`); synthetic borrower statements; the in-memory ledger.
 
-`CovenantSpec` holds only what the credit agreement says (formulas, thresholds, rounding rule, effective date). `BankPolicy`
-holds operating choices: thin-headroom percentage, clean-pass sampling percentage, OCR-confidence floor, required tie-outs.
-Every result stores `policy_id`, `policy_version`, `policy_hash` and the thin-headroom value applied, and the result
-validator classifies using that stored value. Changing policy creates a new version and hash; historical results are never
-re-interpreted.
+**Production requirements (not implemented)**: KMS/HSM-backed asymmetric signing with approver identity from SSO/OIDC claims, N-of-M approval above an exposure limit, persistent write-once ledger storage with signed checkpoints, secrets management, a self-hosted or zero-retention model inside the lender's boundary, OCR ingestion, and a reviewer UI.
 
-### Amendments, restatements, revocations
+**Unimplemented features**: a live-API run, extraction accuracy measurement across agreements, the compliance-certificate back-test, a second independent extraction and diff, hidden-text (text layer vs rendered page) detection, Acquisition Period and equity-cure modelling, pro forma adjustments, multi-covenant specs.
 
-| Event | What happens | What does not happen |
-|---|---|---|
-| **Contract amendment** | A new `CovenantSpec` version with `effective_from` and `executed_on`. The registry picks, for each test date, the version in force. Earlier versions are preserved. | Earlier periods are not re-tested. |
-| **Retroactive amendment** | Allowed only if the spec cites the clause (`retroactive_source`). Results for the affected periods become stale (a ledger event) and are recomputed as new results that supersede the old. | The old results are not edited. |
-| **Financial restatement** | The restated facts, and every result that used them, are marked stale. Recompute with the corrected facts. The spec is unchanged. | The contract version does not change. |
-| **Revoked spec** | Results computed under it become stale. Periods it governed are **blocked** (`SpecRevokedError`) until a corrected approved spec is registered. | The engine does not fall back to the previous version, which would silently apply the wrong terms. |
+## 3. Public SEC agreement used
 
-## 3. Repository structure
+| | |
+|---|---|
+| Company | Viad Corp (now Pursuit Attractions and Hospitality, Inc.), CIK 0000884219 |
+| Agreement | Credit Agreement dated as of July 30, 2021 among Viad Corp, the lenders party thereto and Bank of America, N.A., as Administrative Agent |
+| Filing | Exhibit 10.1 to Form 8-K filed 2021-08-02, accession **0001564590-21-039835** |
+| URL | https://www.sec.gov/Archives/edgar/data/884219/000156459021039835/vvi-ex101_28.htm |
+| Amendment | First Amendment dated as of March 23, 2022 (amends and restates Sections 7.10(a)-(c)), Exhibit 10.1 to Form 8-K filed 2022-03-24, accession **0000950170-22-004478** |
+| Amendment URL | https://www.sec.gov/Archives/edgar/data/884219/000095017022004478/vvi-ex10_1.htm |
 
-```
-covenant_audit/
-  base.py          Money (Decimal only), FrozenModel, canonical JSON hashing
-  arith.py         the one definition of every arithmetic op and the rounding rule (engine and validator share it)
-  models.py        SourceSpan, Expr AST, CovenantSpec, TieOutCheck, FinancialFact, TraceStep, CovenantTestResult, classify()
-  policy.py        BankPolicy (thin headroom, sampling, OCR floor, required tie-outs)
-  verification.py  DocumentStore, SourceVerifier (spans, specs, facts, seals), approve_spec, untrusted-input parsers
-  engine.py        Evaluator: recursive AST evaluation with trace; cycle/unresolved/zero-division/missing-input guards
-  pipeline.py      run_covenant_test, run_period, recompute_stale, replay_result
-  registry.py      SpecRegistry: effective-dated versions, revocation
-  ledger.py        Ledger: append-only hash chain, invalidation events, reviews, checkpoints
-  sample.py        synthetic credit agreement, amendment, borrower statements, and a `World` test harness
-  demo.py          `python -m covenant_audit.demo`
-tests/             143 tests (see section 5)
-tools/mutation_check.py   breaks 12 guarantees one at a time and checks the tests notice
-docs/              the four-page brief (Markdown, LaTeX, PDF) and build scripts
+Why this one: a real Total Net Leverage covenant, a Consolidated EBITDA definition with a genuine sub-cap, a conditional cap on netted cash, an explicit rounding rule, a step-down schedule, and a real amendment that *changed the covenant levels*. That last point is a live example of the "missing amendment" risk: the base agreement alone gives the wrong answer for any date after March 2022.
+
+Clauses used (page numbers are the filing's rendering page breaks, not printed page numbers):
+
+| Element | Where |
+|---|---|
+| Covenant levels (5.25x, 4.75x, 4.50x, then 4.00x, by test date) | First Amendment, Section 1, restated Section 7.10(c), pp.2-3 |
+| `Total Net Leverage Ratio` = Consolidated Net Funded Indebtedness / Consolidated EBITDA for the Test Period | Credit Agreement Section 1.01, p.61 |
+| `Consolidated EBITDA`, clauses (a)-(g); clause (d) run-rate savings capped at **20.0%** of EBITDA calculated before clause (d) | Section 1.01, pp.17-18 |
+| `Consolidated Net Funded Indebtedness`, clauses (a)-(c), New Material Project exclusion capped at **$50,000,000**, minus Unrestricted Cash | Section 1.01, pp.18-19 |
+| `Unrestricted Cash`: capped at **$50,000,000** only if revolver and swing line borrowings exceed **$10,000,000** | Section 1.01, p.62 |
+| Rounding: carry the ratio one place beyond how it is expressed, round to nearest, ties up | Section 1.04, p.64 |
+| Original Section 7.10 (superseded for covenant levels by the amendment) | p.146 |
+
+The sources are committed under `data/sources/` as canonical page text with SHA-256 manifests, and can be re-derived from EDGAR to prove they match:
+
+```bash
+SEC_USER_AGENT="Your Name you@example.com" python3 tools/build_sources.py --check
 ```
 
 ## 4. Installation
 
-Requires Python 3.10+ (developed on 3.12). The only runtime dependency is `pydantic>=2.7`; `pytest` is for tests.
+Python 3.10+ (developed on 3.12). One runtime dependency (`pydantic>=2.7`); `pytest` for tests; network access only for the optional SEC re-download and for live extraction. No database and no framework.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 5. Running the tests
+## 5. API configuration (live extraction only)
+
+```bash
+export OPENROUTER_API_KEY=<your key>      # never commit this
+export OPENROUTER_MODEL=<model id>        # any model id from https://openrouter.ai/models; free-tier models are rate-limited
+```
+
+No key is stored anywhere in the repository, and the test suite never reads one or calls a model. Without configuration the extraction command stops and says so (exit code 2); it never silently substitutes anything.
+
+Do not send confidential data. The documents here are public, which is why a hosted model is acceptable for the prototype; real borrower material would need a model inside the lender's boundary.
+
+## 6. Extraction command
+
+```bash
+python3 -m covenant_audit.cli sources                              # show the SEC references and hash checks
+python3 -m covenant_audit.cli extract --provider openrouter        # LIVE model call (needs the variables above)
+python3 -m covenant_audit.cli extract --provider recorded          # replay the reference response: NOT a model call
+```
+
+What `extract` does: selects excerpts deterministically (about 37,000 characters: the covenant pages, the definitions the ratio depends on, the rounding clause), sends them with the rules, parses the response into a DRAFT spec, and saves it to `.covenant_state/pending_extraction.json`. A malformed, truncated, hostile or invented answer becomes a recorded issue, not an exception and not a spec. Retries (default 2 attempts) feed back only validation messages, never the previous raw output, and a response containing forbidden fields is never retried.
+
+## 7. Approval workflow
+
+```bash
+python3 -m covenant_audit.cli review                               # what the human sees (exit 3 if approval is blocked)
+python3 -m covenant_audit.cli approve --approver you@bank          # prompts you to type the spec hash; or pass --confirm <first 12 hash chars>
+python3 -m covenant_audit.cli reject  --approver you@bank --reason "..."
+python3 -m covenant_audit.cli compute                              # register + run the engine on synthetic financials
+python3 -m covenant_audit.cli demo --provider recorded --approver demo.reviewer@example.com --confirm 921471d92c72
+```
+
+The reviewer sees: provenance (live or not), documents read, every blocking reason, the formula for the ratio and every defined term **generated from the AST by deterministic code (no model)**, every input, every constant with its quotation, document, page and character offsets, the threshold schedule with its sources, the rounding rule and its source, the scope notes, the model's unresolved items, and the list of terms the extractor was not shown.
+
+Approval is **refused** (not warned about) if: the response produced no spec or an invalid one; any quotation fails independent re-verification; the model reported any unresolved item (ambiguity, cross-reference, missing definition, missing amendment); a known amendment document was not among those read; or a semantic check fails (a threshold or constant not present in its own quotation, a maximum tested as a minimum, an unused or invented input, a constant marked "structural" to avoid citing it, a rounding rule without a cited clause).
+
+Approval is an explicit act: type the first 12 characters of the content hash of the spec you were shown. The trusted signer then issues an **`ApprovalAttestation`** binding: approval id, spec content hash, approver id, approver role, decision, timestamp and the reviewer's edit list. Changing any of those, or the spec, invalidates the signature; the registry and the engine re-verify it, only `decision == "approved"` counts, an approval signed for different spec content is refused, and the extraction run and automated identities cannot approve. Approvals are appended to the ledger when a spec is registered, so previous versions keep their approval records. The CLI saves a rejection as a signed record on disk; the ledger API (`append_rejection`) can store it in the chain, but the CLI does not do so yet.
+
+**What the dev signer is not.** `LocalDevApprovalSigner` is an HMAC with a local key. It shows the record was not altered by someone without the key. It does **not** authenticate the approver: the approver id is whatever string the caller passes. `KmsApprovalSigner` documents the production shape and refuses to run.
+
+## 8. Sample deterministic calculation
+
+Real covenant from the approved spec, synthetic borrower (test date 31 Dec 2022, USD millions): borrowed money debt 800, finance leases and construction debt 80, guarantees 5, new-material-project obligations 30, unrestricted cash 120 with revolver and swing line borrowings of 25, net income 70, interest 25, taxes 20, D&A 40, other enumerated add-backs 18, dividends 3 (cap 5), non-cash items 6, transaction charges 4, NCI distributions 2, run-rate cost savings 40.
+
+```
+EBITDA before clause (d)   = 70+25+20+40+18+MIN(3,5)+0+6+4+0 - 2          = 184.0
+Clause (d) cap             = 20.0% x 184.0                                = 36.8   -> MIN(40, 36.8) = 36.8
+Consolidated EBITDA        = 184.0 + 36.8                                 = 220.8
+Netted cash                = revolver 25 > 10, so MIN(120, 50)            = 50
+Net funded indebtedness    = (800+80+5) - MIN(30,50) - 0 - 50             = 805
+Ratio                      = 805 / 220.8 = 3.64583...  -> 3.646 (Section 1.04: three places, ties up)
+Covenant level on 31 Dec 2022 = 4.75x  -> headroom 1.104 (23.24%) -> PASS
+```
+
+Both real sub-caps bite (40 becomes 36.8; 120 becomes 50). The same financials on 30 Jun 2023 face the 4.00x step-down and come out `PASS_THIN_HEADROOM` (8.85% headroom, below the 10% policy), which needs review (`tests/extraction/test_extraction_scenarios.py::test_16b`). The full 47-step trace, with each input tied to its statement line and each constant tied to a quotation in the filing, is in [`docs/demo_transcript.txt`](docs/demo_transcript.txt). Its final part:
+
+```text
+RESULT PASS: ratio 3.6458333333333333333333333333333333333333333333333 -> tested 3.646x vs maximum 4.75x, headroom 1.104 (23.24%)
+  spec VIAD-CA-2021-AMD1-max_total_net_leverage-725a8385 921471d92c728287 | policy DEMO-POLICY v1 d55f07e2190d9b7c | engine 0.2.0 | needs_review=False
+Replay reproduced the result exactly. Ledger hash chain verified: 4 entries, head a7ee32439a522f3c.
+```
+
+The spec produced by the extraction step, as the reviewer sees it (excerpt):
+
+```text
+RATIO = <consolidated_net_funded_indebtedness>  /  <consolidated_ebitda>
+<accepted_cost_savings> = MIN(run_rate_cost_savings, (0.20 x <ebitda_before_clause_d>))
+      source: VIAD-CA-2021 Section 1.01, p.18, chars 917-1042: "shall not (i) exceed 20.0% of Consolidated EBITDA for such Test Period (calculated prior to giving effect to this clause (d))"
+<netted_unrestricted_cash> = IF revolving_and_swing_line_outstanding > 10,000,000 THEN MIN(unrestricted_cash, 50,000,000) ELSE unrestricted_cash
+      source: VIAD-CA-2021 Section 1.01, p.62, chars 840-952: "the aggregate Outstanding Amount of all Revolving Loans and Swing Line Loans as of such date exceeds $10,000,000"
+THRESHOLDS  test dates 2022-09-30..2022-12-30: 5.25x | 2022-12-31..2023-03-30: 4.75x | 2023-03-31..2023-06-29: 4.50x | 2023-06-30..: 4.00x
+ROUNDING    3 decimal places, ROUND_HALF_UP   (Section 1.04, p.64)
+```
+
+## 9. Running the tests
 
 ```bash
 python3 -m pytest
 ```
 
-Actual output from the last run:
+Actual output from the last run (no network and no API key used):
 
 ```text
 ============================= test session starts ==============================
@@ -129,152 +196,79 @@ platform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0
 rootdir: /workspace
 configfile: pyproject.toml
 testpaths: tests
-collected 143 items
+collected 241 items
 
-tests/test_engine.py ........................                            [ 16%]
-tests/test_models.py .............................................       [ 48%]
-tests/test_pipeline.py .............                                     [ 57%]
-tests/test_scenarios.py ...............                                  [ 67%]
-tests/test_verification.py ................................              [ 90%]
+tests/extraction/test_extraction_scenarios.py .......................... [ 10%]
+.....................                                                    [ 19%]
+tests/extraction/test_ingest_clauses_providers.py ...................... [ 28%]
+...                                                                      [ 29%]
+tests/extraction/test_review_cli.py .......                              [ 32%]
+tests/test_approval.py ................                                  [ 39%]
+tests/test_engine.py ...........................                         [ 50%]
+tests/test_models.py .............................................       [ 69%]
+tests/test_pipeline.py .............                                     [ 74%]
+tests/test_scenarios.py ...............                                  [ 80%]
+tests/test_verification.py ................................              [ 94%]
 tests/test_versioning_ledger.py ..............                           [100%]
 
-============================= 143 passed in 0.33s ==============================
+============================= 241 passed in 1.59s ==============================
 ```
 
-| File | Tests | Covers |
-|---|---|---|
-| `test_models.py` | 45 | spec validators, tie-outs, money type, `classify()`, result validator, immutability |
-| `test_verification.py` | 32 | span grounding, seals, forged/edited specs and facts, untrusted input |
-| `test_engine.py` | 24 | every AST op, Decimal exactness, guards, trace re-checking |
-| `test_pipeline.py` | 13 | input admission, review routing, replay, policy history |
-| `test_scenarios.py` | 15 | the 12 required end-to-end scenarios (scenario 11 has 4 rounding cases) |
-| `test_versioning_ledger.py` | 14 | version chain, retroactivity, revocation, hash chain, checkpoints |
-
-Each test's docstring states the expected result and why. The code is also type-checked (`pip install mypy && python3 -m mypy covenant_audit --ignore-missing-imports`: no issues in 12 source files).
-
-To check that the tests have teeth, `python3 tools/mutation_check.py` temporarily breaks 12
-individual guarantees (hardcoded thin threshold, MIN cap turned into MAX, ledger payload check skipped, effective dates
-ignored, unsealed facts trusted, spec seal unchecked, rounding ignored, negative denominators allowed, stale facts accepted,
-review not required for breaches, fact amount not matched to its quote, tie-out sums not checked) and restores each file. In the last run every mutation was KILLED (made at least one test fail).
-
-## 6. Running a sample covenant calculation
-
-```bash
-python3 -m covenant_audit.demo
-```
-
-```text
-SYNTHETIC DATA ONLY. Borrower inputs (millions): base_ebitda=100, addbacks=40, total_debt=540, cash=40
-Spec SPEC-1 v1 [approved] hash 290d4be7e0cd61a7  covenant: ratio <= 4.50 on 2025-06-30
-
-Calculation trace (every line is one AST node; values are exact Decimals):
-   1  term:net_debt/diff/left                    input                                          = 540,000,000   <- F-2025-06-30-total_debt  "Total debt: 540,000,000" (p.1, chars 154-177)
-   2  term:netted_cash/min/0                     input                                          = 40,000,000   <- F-2025-06-30-cash  "Unrestricted cash: 40,000,000" (p.1, chars 178-207)
-   3  term:netted_cash/min/1                     lit                                            = 50,000,000   <- contract "$50,000,000" (p.1, CA-1)
-   4  term:netted_cash/min                       min(40,000,000 , 50,000,000)                   = 40,000,000
-   5  term:netted_cash                           term(40,000,000)                               = 40,000,000   <- defined by ""Consolidated Net Debt" means Consolidated Total Debt minus ..."
-   6  term:net_debt/diff                         diff(540,000,000 , 40,000,000)                 = 500,000,000
-   7  term:net_debt                              term(500,000,000)                              = 500,000,000   <- defined by ""Consolidated Net Debt" means Consolidated Total Debt minus ..."
-   8  term:consolidated_ebitda/sum/0             input                                          = 100,000,000   <- F-2025-06-30-base_ebitda  "LTM Consolidated EBITDA before add-backs: 100,000,000" (p.1, chars 74-127)
-   9  term:accepted_addbacks/min/0               input                                          = 40,000,000   <- F-2025-06-30-addbacks  "LTM add-backs: 40,000,000" (p.1, chars 128-153)
-  10  term:accepted_addbacks/min/1/mul/left      lit                                            = 0.25   <- contract "twenty-five percent (25%)" (p.1, CA-1)
-  11  term:accepted_addbacks/min/1/mul/right     input                                          = 100,000,000   <- F-2025-06-30-base_ebitda  "LTM Consolidated EBITDA before add-backs: 100,000,000" (p.1, chars 74-127)
-  12  term:accepted_addbacks/min/1/mul           mul(0.25 , 100,000,000)                        = 25,000,000.00
-  13  term:accepted_addbacks/min                 min(40,000,000 , 25,000,000.00)                = 25,000,000.00
-  14  term:accepted_addbacks                     term(25,000,000.00)                            = 25,000,000.00   <- defined by ""Consolidated EBITDA" means Consolidated Net Income plus add..."
-  15  term:consolidated_ebitda/sum               sum(100,000,000 , 25,000,000.00)               = 125,000,000.00
-  16  term:consolidated_ebitda                   term(125,000,000.00)                           = 125,000,000.00   <- defined by ""Consolidated EBITDA" means Consolidated Net Income plus add..."
-  17  ratio                                      div(500,000,000 , 125,000,000.00)              = 4
-  18  ratio.rounded                              round(4)                                       = 4.00
-
-Result R-dc714082ac0a1f7c22f0185d: PASS  ratio 4 -> tested 4.00x vs 4.50x  headroom 0.50 (11.1111111111%)
-  spec SPEC-1 v1 290d4be7e0cd61a7, policy BANK-POLICY v1 3bb7e51d4a6d9aea (thin-headroom 0.10), engine 0.2.0, needs_review=False
-Replay from sealed inputs reproduced the result exactly; ledger hash chain verified (1 result, head 8358dfda6ec4e777).
-```
-
-## 7. A complete numerical example
-
-Synthetic borrower, test date 30 June 2025, covenant "Total Net Leverage Ratio must not exceed 4.50x":
-
-| Input | Value |
+| Group | Tests |
 |---|---|
-| Total debt | 540 |
-| Unrestricted cash | 40 (net-able up to the 50 cap) |
-| EBITDA before add-backs | 100 |
-| Add-backs | 40 (capped at 25% of EBITDA before add-backs) |
+| Original deterministic core (`test_models`, `test_verification`, `test_engine`, `test_pipeline`, `test_scenarios`, `test_versioning_ledger`) | 146 (the original 143, plus 3 for the new `IfGt` node) |
+| Approval attestation (`test_approval`) | 16 |
+| Extraction workflow on the real agreement (`tests/extraction/`, kept separate) | 79 |
+
+Original-suite note: one original assertion was deliberately *narrowed*, not removed. `test_scenarios.py::test_12` used to forbid every process/network import anywhere in the package; the new document-download and model-call modules legitimately need `urllib`. It now enforces that the deterministic core imports no network or process module, that only `ingest.py` and `llm.py` may import `urllib` (and `os` for configuration), and that nothing imports a process-execution module.
+
+`python3 tools/mutation_check.py` breaks 28 individual guarantees one at a time (approval signature unchecked, attestation hash unchecked, forbidden model fields accepted, claimed offsets unchecked, invented quote accepted, unresolved items not blocking, known amendments ignored, quotes not re-verified at review, confirmation not checked, and the earlier arithmetic/ledger/registry ones) and confirms the suite fails for each. In the last run every mutation was KILLED. Type check: `python3 -m mypy covenant_audit --ignore-missing-imports` reports no issues in 24 files.
+
+## 10. Security and auditability
+
+Documents are treated as untrusted input. The model is given text and returns text; it is offered no tools, functions or code execution, and the response schema has no field in which an injected instruction could request one.
+
+| Risk | Implemented protection | Future production requirement |
+|---|---|---|
+| Prompt injection in a filing | Rules tell the model the excerpts are data; response is schema-checked; keys such as `tool_calls`, `code`, `eval`, `approval`, `verified`, `status`, `seal` anywhere in the response reject the whole answer; nothing the model returns is ever executed; the engine consumes only the sealed, approved, structured spec, never model text | Run extraction in a sandbox with no network egress other than the provider; red-team the prompt |
+| Hidden PDF text, look-alike characters | Canonicalisation of typography; quotes must match the stored text exactly | Compare text layer with the rendered page; reject documents with invisible text |
+| Malicious or misleading amendment | Known amendments listed per document; approval blocked if a known amendment was not read; the First Amendment is a real example | A maintained amendment register confirmed by the agent bank; signature/provenance checks on amendment documents |
+| Fabricated quotation | Quote must occur exactly once on the cited page; offsets/hash computed by software, model-claimed ones must be exact; `verify_spec` re-checks independently | none beyond this |
+| Incorrect but syntactically valid extraction | Semantic checks (threshold/constant in its own quote, direction, unused inputs, structural abuse, rounding source); the reviewer sees the formula in plain form; deliberately wrong extractions are refused in tests | Compliance-certificate back-test; two independent extractions diffed; reviewer training; sampling of approved specs |
+| Unauthorized approval | Attestation bound to spec hash, approver, role, decision and time; extractor and automated identities refused; registry and engine re-verify; hash typed by the reviewer | KMS/HSM signing, SSO-authenticated approver identity, N-of-M approval above an exposure limit |
+| Model hallucination | Nothing is accepted without a verbatim, unique, hashed quotation; unresolved items block; the model never computes | Accuracy measurement across a corpus of agreements |
+| Missing documents | The extractor is told which referenced terms it was not shown; the engine refuses dates no spec governs | Document-completeness checks against the filing index |
+| Provider outage, rate limits, truncation | Typed errors, bounded backoff honouring `Retry-After`, truncated or empty completions rejected, outage recorded as an issue | Fallback providers, alerting |
+
+**Source verification establishes provenance, not semantic correctness.** A quotation can be real and the reading wrong. A consistent but wrong reading, for example numerator and denominator swapped, passes every machine check by design; `test_known_limit_a_consistent_but_wrong_reading_passes_every_machine_check` documents this. Human approval remains necessary and is the control for it.
+
+## 11. Known limitations
+
+- **No live-model run exists in this repository.** The OpenRouter provider is tested against a fake transport only; real models may fail to follow the schema, quote exactly, or may differ from the reference. Extraction accuracy is unmeasured.
+- The reference extraction was written by the coding agent that built this repo, which reads the same text a model would; it is a plausible target, not independent evidence of model performance.
+- The spec models the *standard* maximum level only. The **Acquisition Period** alternative levels, the **equity cure**, **pro forma** adjustments, Unrestricted Subsidiary exclusion, and the conditions attached to the run-rate savings add-back are recorded in `scope_notes` as not modelled. Several EBITDA add-backs are grouped into one input (documented in the scope notes).
+- The Amendment's "Effective Date" is defined by conditions precedent, not a calendar date; the spec applies from the first scheduled test date (30 Sep 2022).
+- Only native-text pages are supported for extraction; there is no OCR ingestion. Page numbers are rendering page breaks.
+- Semantic checks catch mechanical mistakes only (see section 10). Approval is a single signature; the dev signer proves integrity, not identity.
+- The ledger is in memory with unsigned checkpoints; the CLI state directory holds local dev keys.
+- Synthetic borrower data has no tie-out components in the demo policy (tie-out machinery is tested separately).
+- Everything from the earlier phase still applies: single ratio per spec, no FX, negative EBITDA yields INDETERMINATE, and borrower fraud is out of scope.
+
+## Repository structure
 
 ```
-Net debt          = 540 - MIN(40, 50)            = 500
-Add-back cap      = 25% x 100                    = 25
-Accepted add-backs = MIN(40, 25)                  = 25
-Capped EBITDA     = 100 + 25                     = 125
-Ratio             = 500 / 125                    = 4 -> 4.00x   (rounded to 2 places, half up, per the contract)
-Headroom          = (4.50 - 4.00) / 4.50         = 11.11%  -> PASS (policy: thin if < 10%)
+covenant_audit/
+  base.py arith.py models.py policy.py          deterministic core: types, Decimal arithmetic, AST, policy
+  verification.py approval.py errors.py         source verification, seals, approval attestation, signers
+  engine.py pipeline.py registry.py ledger.py   evaluator, computation pipeline, versioning, hash-chained ledger
+  ingest.py clauses.py                          SEC ingestion/canonicalisation; deterministic clause selection
+  llm.py extraction.py                          provider interface (OpenRouter, recorded, scripted); extraction workflow
+  spec_checks.py explain.py review.py           semantic checks; AST-to-text; reviewer view and approval workflow
+  synthetic.py sample.py viad_demo.py cli.py demo.py
+data/sources/       committed canonical SEC pages + manifests (hash-pinned)
+data/extraction/    the reference response (hand-authored, labelled)
+data/demo/          synthetic borrower financials
+tools/              build_sources.py (SEC re-derivation), author_reference_extraction.py, mutation_check.py
+tests/              original core tests + test_approval.py;  tests/extraction/ for the extraction workflow
+docs/               four-page brief (unchanged in this phase), demo_transcript.txt
 ```
-
-Without the cap the ratio would be 500 / 140 = 3.57x, an overstated pass. Every line above is a node in the trace printed by the
-demo; none is hardcoded.
-
-Rounding matters: with EBITDA 200 and net debt 901 the exact ratio is 4.505. The contract says "two decimal places, rounding
-half up", so the tested ratio is 4.51 and the covenant is breached; under `ROUND_HALF_EVEN` it would be 4.50 and pass at the
-limit. Classification uses the rounded ratio (`test_scenarios.py::test_11`).
-
-## 8. The AST
-
-A spec's formulas are data: a tree of nine node types (`Lit`, `Input`, `TermRef`, `Sum`, `Diff`, `Mul`, `Div`, `MinOf`,
-`MaxOf`). Net debt is `Diff(Input total_debt, TermRef netted_cash)` where `netted_cash` is `MinOf(Input cash, Lit 50,000,000)`.
-There is no `eval` and no model-written Python; an LLM can only fill this schema.
-
-- `Evaluator` walks the tree recursively. Each node appends a `TraceStep` (node id, operation, operand values, value, fact id,
-  contract clause spans, borrower-document evidence span). A term used twice is evaluated once.
-- It defends itself even if model validation was bypassed: cycles (`CyclicTermError`), unresolved terms, unsupported node types,
-  missing inputs, division by zero, and a non-positive denominator (negative EBITDA would make a leverage ratio negative and
-  wrongly satisfy a maximum covenant, so the pipeline returns INDETERMINATE for a human).
-- `arith.apply_op` is the *only* implementation of the operations. `CovenantTestResult` re-runs it on every stored trace step, so a
-  tampered trace fails validation.
-
-## 9. Source verification
-
-- `SourceSpan` is an *extracted* quotation: document id, document SHA-256, page, character offsets and the quoted text. It has
-  no verification state.
-- `SourceVerifier.verify_span` checks that the document exists, its hash matches, the page and offsets are valid, the quote equals
-  the stored text exactly, and the text origin (native vs OCR) matches the stored page. OCR spans must carry a confidence;
-  confidence below the bank's floor routes the result to human review.
-- `DocumentStore.locate` builds a span from a page number and a quotation, so code, not the LLM, counts characters.
-- `verify_spec` grounds *every* quotation in a spec and seals it. `verify_fact` additionally checks that the fact's amount is
-  printed in its quote at the stated scale (parentheses are negative), that every tie-out passes, and that every tie-out the
-  policy requires is present **and grounded**: each tie-out component must be quoted from the document and `expected` must equal
-  their sum, so an extractor cannot invent components that add up to a convenient total.
-- Extractor output is untrusted: `parse_untrusted_facts` rejects unknown keys (there is no field for tool calls), floats,
-  supplied tie-out verdicts and supplied seals.
-
-## 10. Limitations and known failure cases
-
-Not implemented:
-
-- **No LLM extraction.** There is no prompt, no model call and no extraction accuracy measurement. Specs and facts in the tests
-  are built by code.
-- **No compliance-certificate back-test**, no two-extraction diff, no AST-to-plain-English rendering for the reviewer, no
-  hidden-text (text layer vs rendered page) comparison, no amendment register. The written brief mentions some of these as design
-  mitigations; they are designs, not code.
-- **No document ingestion.** `DocumentStore` takes page text. It hashes canonical text, not the original PDF bytes, and there is
-  no OCR.
-- **Approval is a single signature.** The second signer above an exposure limit, reviewer authorisation and role checks are not
-  implemented.
-- **The ledger is in memory.** The hash chain is real and tamper-evident, but there is no persistence, and checkpoints are not
-  signed or anchored externally.
-- **Seals use an in-process key** (see section 2).
-- **Scope of the calculation.** One ratio per spec; no FX, pro-forma acquisitions, equity cure, or contractual treatment of
-  negative EBITDA (these yield INDETERMINATE or are out of scope).
-
-Known failure cases the design cannot fully remove:
-
-- **Grounding is not understanding.** A quote can exist yet be misread (a wrong cap, the pre-amendment definition). Verification
-  proves the quote is real and the spec is internally consistent, not that it *means* what the contract means. Human approval is
-  the control; spec literals and thresholds are not cross-checked against their quotes because wording such as "twenty-five percent" is
-  not machine-parseable here (fact amounts are).
-- **Coordinated fabrication.** A borrower who falsifies a statement and its components consistently passes every tie-out.
-  Borrower fraud is out of scope.
-- **Missing amendments.** The system cannot know about an amendment it was never given.
-- **Duplicate/unsupported period shapes.** LTM inputs are accepted if they cover 365-366 days; other fiscal-year shapes are
-  rejected as INDETERMINATE rather than adjusted.

@@ -289,6 +289,7 @@ class CovenantSpec(FrozenModel):
     test_period: Literal["ltm_quarterly", "ltm_monthly"] = "ltm_quarterly"
     ratio_decimal_places: int | None = Field(default=2, ge=0, le=6)  # None = no contractual rounding
     rounding: RoundingMode = "ROUND_HALF_UP"
+    rounding_source: SourceSpan | None = None  # the clause that states the rounding rule, when the contract has one
     effective_from: date  # first test date this version governs
     executed_on: date | None = None  # signing date of the amendment, if any
     retroactive_source: SourceSpan | None = None  # clause that makes an amendment retroactive
@@ -353,6 +354,8 @@ class CovenantSpec(FrozenModel):
                     yield n.source
         if self.retroactive_source:
             yield self.retroactive_source
+        if self.rounding_source:
+            yield self.rounding_source
 
     def _assert_acyclic(self) -> None:
         graph = {
