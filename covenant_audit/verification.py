@@ -28,6 +28,7 @@ from .models import (
     Seal,
     SourceSpan,
     SpecStatus,
+    TieOutCheck,
 )
 from .policy import BankPolicy
 
@@ -270,6 +271,8 @@ class SourceVerifier:
         failing = [t.name for t in fact.tie_outs if not t.passed]
         if failing:
             raise VerificationError(f"fact {fact.fact_id}: tie-out(s) failed: {', '.join(failing)}")
+        for tie_out in fact.tie_outs:
+            self._ground_tie_out(fact, tie_out, policy)
         present = {t.name for t in fact.tie_outs}
         missing = [n for n in policy.required_tie_outs_for(fact.input_name) if n not in present]
         if missing:
@@ -277,6 +280,30 @@ class SourceVerifier:
                 f"fact {fact.fact_id}: required tie-out(s) missing for '{fact.input_name}': {', '.join(missing)}"
             )
         return evolve(fact, seal=self._seal("fact", fact.content_hash()))
+
+    def _ground_tie_out(self, fact: FinancialFact, tie_out: TieOutCheck, policy: BankPolicy) -> None:
+        """Each component must be quoted from the source, and `expected` must be their sum."""
+        if not tie_out.component_spans:
+            if policy.allow_ungrounded_tie_outs:
+                return
+            raise VerificationError(
+                f"fact {fact.fact_id}: tie-out '{tie_out.name}' cites no source components, so its "
+                f"expected value is only the extractor's claim"
+            )
+        total = Decimal(0)
+        for span in tie_out.component_spans:
+            self.verify_span(span)
+            printed = _amounts_in(span.quote)
+            if len(printed) != 1:
+                raise VerificationError(
+                    f"fact {fact.fact_id}: component quote {span.quote!r} must print exactly one amount"
+                )
+            total += next(iter(printed)) * fact.reported_scale
+        if total != tie_out.expected:
+            raise VerificationError(
+                f"fact {fact.fact_id}: tie-out '{tie_out.name}' expected {tie_out.expected} but the quoted "
+                f"components sum to {total}"
+            )
 
     def check_fact(self, fact: FinancialFact) -> None:
         self._check_seal("fact", fact.content_hash(), fact.seal, f"fact {fact.fact_id}")

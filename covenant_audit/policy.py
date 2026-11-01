@@ -30,6 +30,7 @@ class BankPolicy(FrozenModel):
     clean_pass_sample_pct: Money  # fraction of clean passes routed to human review
     min_ocr_confidence: Money = Decimal("0.90")  # OCR evidence below this forces review
     required_tie_outs: tuple[TieOutRequirement, ...] = ()
+    allow_ungrounded_tie_outs: bool = False  # True only for tests; production tie-outs must cite components
 
     @field_validator("thin_headroom_pct")
     @classmethod

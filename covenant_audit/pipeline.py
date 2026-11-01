@@ -26,7 +26,10 @@ from .models import (
     TieOutCheck,
     classify,
 )
+from .ledger import Ledger, LedgerError
+from .models import CovenantKind
 from .policy import BankPolicy
+from .registry import SpecRegistry
 from .verification import SealError, SourceVerifier
 
 ENGINE_VERSION = "0.2.0"
@@ -159,7 +162,7 @@ def run_covenant_test(
     tie_outs: tuple[TieOutCheck, ...] = tuple(t for f in usable.values() for t in f.tie_outs)
     used_hashes = sorted(f.content_hash() for f in considered)
     result_id = "R-" + sha256_hex(
-        "|".join([spec_hash, policy_hash, ENGINE_VERSION, spec.kind.value, str(test_date), *used_hashes])
+        "|".join([spec_hash, policy_hash, ENGINE_VERSION, spec.kind.value, str(test_date), *used_hashes, *blocking])
     )[:24]
     return CovenantTestResult(
         result_id=result_id,
@@ -217,3 +220,54 @@ def replay_result(
             f"stored result used engine {stored.engine_version}, replay used {again.engine_version}"
         )
     return again
+
+
+def run_period(
+    registry: SpecRegistry,
+    ledger: Ledger,
+    agreement_id: str,
+    kind: CovenantKind,
+    test_date: date,
+    facts: Iterable[FinancialFact],
+    policy: BankPolicy,
+    verifier: SourceVerifier,
+    *,
+    supersedes_result_id: str | None = None,
+    now: datetime | None = None,
+) -> CovenantTestResult:
+    """Test one period end to end: pick the spec that governed that date, compute, and record the
+    result in the ledger. Facts the ledger knows to be restated are refused as stale."""
+    spec = registry.spec_for(agreement_id, kind, test_date)
+    changed = spec.version > 1 and not ledger.has_result_for_spec(spec.spec_id)
+    result = run_covenant_test(
+        spec, facts, test_date, policy, verifier,
+        first_test_after_spec_change=changed,
+        stale_fact_ids=ledger.stale_fact_ids(),
+        supersedes_result_id=supersedes_result_id,
+        now=now,
+    )
+    ledger.append_result(result, policy, now)
+    return result
+
+
+def recompute_stale(
+    registry: SpecRegistry,
+    ledger: Ledger,
+    stale_result_id: str,
+    facts: Iterable[FinancialFact],
+    policy: BankPolicy,
+    verifier: SourceVerifier,
+    *,
+    now: datetime | None = None,
+) -> CovenantTestResult:
+    """Recompute a stale result with current facts and the spec that now governs its period.
+    The stale result stays in the ledger; the new one records that it supersedes it."""
+    if not ledger.is_stale(stale_result_id):
+        raise LedgerError(f"result {stale_result_id} is not stale; refusing to recompute")
+    old = ledger.get_result(stale_result_id)
+    if stale_result_id in ledger.superseded_result_ids():
+        raise LedgerError(f"result {stale_result_id} has already been recomputed")
+    return run_period(
+        registry, ledger, old.agreement_id, old.kind, old.test_date, facts, policy, verifier,
+        supersedes_result_id=stale_result_id, now=now,
+    )

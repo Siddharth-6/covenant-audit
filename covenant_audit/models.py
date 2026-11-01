@@ -361,9 +361,12 @@ class TieOutCheck(FrozenModel):
     field, so no caller (and no LLM output) can supply or override it."""
 
     name: str  # e.g. "debt_components_sum_to_total_debt"
-    expected: Money
-    actual: Money
+    expected: Money  # the sum of the components, as claimed by the extractor
+    actual: Money  # the reported total being checked
     tolerance: Money = Decimal("0")
+    # One quotation per component amount. The verifier grounds each in the source document and
+    # checks that `expected` really is their sum, so an extractor cannot invent components.
+    component_spans: tuple[SourceSpan, ...] = ()
 
     @model_validator(mode="before")
     @classmethod

@@ -200,6 +200,7 @@ class World:
         seal: bool = True,
         tie_out_parts: Mapping[str, tuple[Decimal, Decimal]] | None = None,
         extra_lines: tuple[str, ...] = (),
+        fact_suffix: str = "",
     ) -> dict[str, FinancialFact]:
         """Register a synthetic borrower statement and return (sealed) facts keyed by input name.
 
@@ -212,10 +213,21 @@ class World:
             "cash": "Unrestricted cash",
         }
         amounts = {k: M(v) for k, v in values.items()}
+        component_labels = {
+            "total_debt": ("Term loan", "Revolver"),
+            "cash": ("Operating accounts", "Money market funds"),
+        }
+        parts_for: dict[str, tuple[Decimal, Decimal]] = {
+            name: (tie_out_parts or {}).get(name) or (amounts[name] * Decimal("0.6"), amounts[name] * Decimal("0.4"))
+            for name in component_labels
+            if name in amounts
+        }
         lines = [f"Borrower financial statements for the period ended {period_end.isoformat()} (SYNTHETIC)"]
         lines += [f"{labels[k]}: {amounts[k]:,}" for k in labels if k in amounts]
+        for name, parts in parts_for.items():
+            lines += [f"{lab}: {p:,}" for lab, p in zip(component_labels[name], parts)]
         lines += list(extra_lines)
-        doc_id = f"FS-{period_end.isoformat()}-{sha256_hex(repr(sorted(amounts.items())) + repr(extra_lines))[:6]}"
+        doc_id = f"FS-{period_end.isoformat()}-{sha256_hex(repr(sorted(amounts.items())) + repr(extra_lines) + repr(sorted(parts_for.items())))[:6]}"
         self.store.register(doc_id, ("\n".join(lines),))
         facts: dict[str, FinancialFact] = {}
         for name in labels:
@@ -224,18 +236,21 @@ class World:
             quote = f"{labels[name]}: {amounts[name]:,}"
             span = self.store.locate(doc_id, 1, quote)
             tie_outs: tuple[TieOutCheck, ...] = ()
-            if name in ("total_debt", "cash"):
-                parts = (tie_out_parts or {}).get(name) or (amounts[name] * Decimal("0.6"), amounts[name] * Decimal("0.4"))
+            if name in component_labels:
+                parts = parts_for[name]
                 tie_outs = (
                     TieOutCheck(
                         name="debt_components_sum_to_total" if name == "total_debt" else "cash_components_sum_to_total",
                         expected=sum(parts, Decimal(0)),
                         actual=amounts[name],
+                        component_spans=tuple(
+                            self.store.locate(doc_id, 1, f"{lab}: {p:,}") for lab, p in zip(component_labels[name], parts)
+                        ),
                     ),
                 )
             is_flow = name in ("base_ebitda", "addbacks")
             fact = FinancialFact(
-                fact_id=f"F-{period_end.isoformat()}-{name}",
+                fact_id=f"F-{period_end.isoformat()}-{name}{fact_suffix}",
                 input_name=name,
                 value=amounts[name],
                 currency="USD",
