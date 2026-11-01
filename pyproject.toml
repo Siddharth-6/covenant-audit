@@ -1,0 +1,10 @@
+[project]
+name = "covenant-audit"
+version = "0.2.0"
+description = "Auditable covenant compliance: compile the contract once, compute it deterministically every quarter."
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2.7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
