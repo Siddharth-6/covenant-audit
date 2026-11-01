@@ -173,7 +173,7 @@ class Evaluator:
 
     def _eval(self, expr: Any, node_id: str, term: str | None) -> int:
         if isinstance(expr, Lit):
-            refs = (expr.source,) if expr.source is not None else ()
+            refs: tuple[SourceSpan, ...] = (expr.source,) if expr.source is not None else ()
             return self._emit(node_id, "literal", "lit", term, (), source_refs=refs, leaf_value=expr.value)
         if isinstance(expr, Input):
             fact = self._facts.get(expr.name)

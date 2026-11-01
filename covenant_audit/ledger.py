@@ -16,6 +16,8 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Iterable, Literal
 
+from pydantic import BaseModel
+
 from .base import FrozenModel, Sha256Hex, canonical_json, sha256_hex
 from .models import (
     CovenantKind,
@@ -71,7 +73,7 @@ class Checkpoint(FrozenModel):
     head_hash: Sha256Hex
 
 
-_PAYLOAD_MODELS = {
+_PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "policy": BankPolicy,
     "spec_registered": CovenantSpec,
     "result": CovenantTestResult,
