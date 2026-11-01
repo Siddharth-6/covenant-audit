@@ -4,6 +4,7 @@
     python3 -m covenant_audit.cli extract --provider openrouter   live model extraction (needs OPENROUTER_API_KEY)
     python3 -m covenant_audit.cli extract --provider recorded     replay the reference response (NOT a model call)
     python3 -m covenant_audit.cli review                          show the reviewer's view of the pending extraction
+    python3 -m covenant_audit.cli score                           check the pending extraction against the contract's key facts
     python3 -m covenant_audit.cli approve --approver ID           explicit human approval (type the spec hash to confirm)
     python3 -m covenant_audit.cli reject --approver ID --reason ...
     python3 -m covenant_audit.cli compute                         register the approved spec, run the deterministic engine
@@ -30,6 +31,7 @@ from .llm import LLMConfigurationError, LLMProvider, OpenRouterProvider, Recorde
 from .pipeline import replay_result, run_period
 from .policy import BankPolicy
 from .registry import SpecRegistry
+from .scoring import render_scorecard, score_outcome
 from .review import ApprovalRefused, StateDir, approve, prepare_review, reject, render_review
 from .synthetic import SyntheticDataError, build_synthetic_facts
 from .viad_demo import DEFAULT_TEST_DATE, REFERENCE_RESPONSE, SYNTHETIC_FINANCIALS, TASK, excerpts, load_sources
@@ -93,6 +95,14 @@ def cmd_review(args: argparse.Namespace) -> int:
     _, _, pkg = _package(StateDir(args.state_dir))
     print(render_review(pkg))
     return 0 if pkg.approvable else 3
+
+
+def cmd_score(args: argparse.Namespace) -> int:
+    outcome = StateDir(args.state_dir).load_outcome()
+    checks = score_outcome(outcome)
+    print(describe_provenance(outcome))
+    print(render_scorecard(checks))
+    return 0 if all(c.passed for c in checks) else 1
 
 
 def cmd_approve(args: argparse.Namespace) -> int:
@@ -207,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--confirm", default=None, help="first 12 chars of the spec hash; omit to be prompted")
         p.set_defaults(func=func)
     sub.add_parser("review").set_defaults(func=cmd_review)
+    sub.add_parser("score").set_defaults(func=cmd_score)
     p = sub.add_parser("approve")
     p.add_argument("--approver", required=True)
     p.add_argument("--role", choices=["credit_officer", "legal_reviewer"], default="credit_officer")
