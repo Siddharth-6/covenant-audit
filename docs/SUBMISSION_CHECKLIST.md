@@ -14,7 +14,7 @@ The assignment (Section 3) asks for three things. This maps each to what exists 
 | Things to consider before spending more time | Done |
 | Appendix: where AI helped, what you rejected, what came from you, one thing you can defend | Done, but **you must verify every first-person claim is true of you** (see below) |
 
-Rebuild: `cd docs && pdflatex brief.tex` (twice if you edit). Check it is still 4 pages.
+Rebuild the LaTeX PDF with `cd docs && pdflatex -jobname=brief_latex brief.tex` (the job name matters: without it the output is written to `brief.pdf`, which is the separate Markdown/Chrome rendering). Rebuild that one with `python3 docs/build_pdf.py`. Check each is still 4 pages.
 
 ## 2. Prototype (optional but strong)
 
