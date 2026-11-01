@@ -133,6 +133,7 @@ What `extract` does: selects excerpts deterministically (about 37,000 characters
 ## 7. Approval workflow
 
 ```bash
+python3 -m covenant_audit.cli score                                # check the extraction against the contract's key facts (exit 1 if any fail)
 python3 -m covenant_audit.cli review                               # what the human sees (exit 3 if approval is blocked)
 python3 -m covenant_audit.cli approve --approver you@bank          # prompts you to type the spec hash; or pass --confirm <first 12 hash chars>
 python3 -m covenant_audit.cli reject  --approver you@bank --reason "..."
@@ -196,33 +197,34 @@ platform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0
 rootdir: /workspace
 configfile: pyproject.toml
 testpaths: tests
-collected 241 items
+collected 246 items
 
 tests/extraction/test_extraction_scenarios.py .......................... [ 10%]
 .....................                                                    [ 19%]
 tests/extraction/test_ingest_clauses_providers.py ...................... [ 28%]
 ...                                                                      [ 29%]
 tests/extraction/test_review_cli.py .......                              [ 32%]
-tests/test_approval.py ................                                  [ 39%]
-tests/test_engine.py ...........................                         [ 50%]
+tests/extraction/test_scoring.py .....                                   [ 34%]
+tests/test_approval.py ................                                  [ 40%]
+tests/test_engine.py ...........................                         [ 51%]
 tests/test_models.py .............................................       [ 69%]
-tests/test_pipeline.py .............                                     [ 74%]
-tests/test_scenarios.py ...............                                  [ 80%]
+tests/test_pipeline.py .............                                     [ 75%]
+tests/test_scenarios.py ...............                                  [ 81%]
 tests/test_verification.py ................................              [ 94%]
 tests/test_versioning_ledger.py ..............                           [100%]
 
-============================= 241 passed in 1.59s ==============================
+============================= 246 passed in 1.65s ==============================
 ```
 
 | Group | Tests |
 |---|---|
 | Original deterministic core (`test_models`, `test_verification`, `test_engine`, `test_pipeline`, `test_scenarios`, `test_versioning_ledger`) | 146 (the original 143, plus 3 for the new `IfGt` node) |
 | Approval attestation (`test_approval`) | 16 |
-| Extraction workflow on the real agreement (`tests/extraction/`, kept separate) | 79 |
+| Extraction workflow on the real agreement (`tests/extraction/`, kept separate; includes the scorecard) | 84 |
 
 Original-suite note: one original assertion was deliberately *narrowed*, not removed. `test_scenarios.py::test_12` used to forbid every process/network import anywhere in the package; the new document-download and model-call modules legitimately need `urllib`. It now enforces that the deterministic core imports no network or process module, that only `ingest.py` and `llm.py` may import `urllib` (and `os` for configuration), and that nothing imports a process-execution module.
 
-`python3 tools/mutation_check.py` breaks 28 individual guarantees one at a time (approval signature unchecked, attestation hash unchecked, forbidden model fields accepted, claimed offsets unchecked, invented quote accepted, unresolved items not blocking, known amendments ignored, quotes not re-verified at review, confirmation not checked, and the earlier arithmetic/ledger/registry ones) and confirms the suite fails for each. In the last run every mutation was KILLED. Type check: `python3 -m mypy covenant_audit --ignore-missing-imports` reports no issues in 24 files.
+`python3 tools/mutation_check.py` breaks 28 individual guarantees one at a time (approval signature unchecked, attestation hash unchecked, forbidden model fields accepted, claimed offsets unchecked, invented quote accepted, unresolved items not blocking, known amendments ignored, quotes not re-verified at review, confirmation not checked, and the earlier arithmetic/ledger/registry ones) and confirms the suite fails for each. In the last run every mutation was KILLED. Type check: `python3 -m mypy covenant_audit --ignore-missing-imports` reports no issues in 25 files.
 
 ## 10. Security and auditability
 
@@ -254,6 +256,10 @@ Documents are treated as untrusted input. The model is given text and returns te
 - Synthetic borrower data has no tie-out components in the demo policy (tie-out machinery is tested separately).
 - Everything from the earlier phase still applies: single ratio per spec, no FX, negative EBITDA yields INDETERMINATE, and borrower fraud is out of scope.
 
+## Submission documents
+
+`docs/brief_latex.pdf` is the four-page brief to submit (source `docs/brief.tex`; the same content is in `docs/brief.md` and `docs/brief.pdf`). `docs/SUBMISSION_CHECKLIST.md` lists what remains for you to do (live run, public repo, LLM logs, verifying the appendix). `docs/WALKTHROUGH.md` is a rehearsal guide for defending the project live. `python3 -m covenant_audit.cli score` checks any extraction against the contract's key facts so a live-model run can be reported honestly; its checklist was written by the same coding assistant as the reference extraction, so a perfect score on the reference proves nothing by itself (the tests show it fails on wrong extractions).
+
 ## Repository structure
 
 ```
@@ -263,7 +269,7 @@ covenant_audit/
   engine.py pipeline.py registry.py ledger.py   evaluator, computation pipeline, versioning, hash-chained ledger
   ingest.py clauses.py                          SEC ingestion/canonicalisation; deterministic clause selection
   llm.py extraction.py                          provider interface (OpenRouter, recorded, scripted); extraction workflow
-  spec_checks.py explain.py review.py           semantic checks; AST-to-text; reviewer view and approval workflow
+  spec_checks.py explain.py review.py scoring.py   semantic checks; AST-to-text; reviewer view and approval; contract-facts scorecard
   synthetic.py sample.py viad_demo.py cli.py demo.py
 data/sources/       committed canonical SEC pages + manifests (hash-pinned)
 data/extraction/    the reference response (hand-authored, labelled)

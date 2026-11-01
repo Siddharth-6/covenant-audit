@@ -1,100 +1,91 @@
-# Auditable Covenant Compliance: compile the contract once, compute it deterministically every quarter
+# Auditable Covenant Compliance: let the LLM read the contract once, let code compute it every quarter
 
-**Domain:** commercial-loan financial-covenant monitoring. **Jurisdiction:** US credit agreements (NY law), using public EDGAR Exhibit 10 filings and 10-Q/10-K financials. For another jurisdiction the definitions and amendment conventions change; the architecture does not. **All cost figures below are my estimates, not sourced data, and every example is synthetic.**
+**Domain:** commercial-loan financial-covenant monitoring. **Jurisdiction:** US credit agreements (NY law). **Data:** a real public agreement from SEC EDGAR, Viad Corp's Credit Agreement of 30 Jul 2021 (accession 0001564590-21-039835) and its First Amendment of 23 Mar 2022 (0000950170-22-004478). **Borrower financials are synthetic. Cost figures are my estimates, not sourced data.** For another jurisdiction the definitions and amendment conventions change; the architecture does not.
 
-**What surprised me.** The ratio math is trivial (net debt / EBITDA). The risk is the *definition*: "Consolidated EBITDA" differs per agreement, add-backs are capped, cash netting is capped, thresholds step down, and amendments silently redefine terms. A template fails because every agreement is bespoke, and one LLM call that returns the ratio cannot be audited.
+**What surprised me.** The ratio math is trivial (net debt / EBITDA); the risk is the *definition*. Reading the real agreement made that concrete: (1) "Consolidated EBITDA" allows run-rate cost savings only up to **20.0%** of EBITDA calculated before that add-back; (2) "Unrestricted Cash" may be netted in full, **unless** revolver borrowings exceed $10,000,000, when it is capped at $50,000,000, a conditional that a flat formula cannot express; (3) Section 1.04 prescribes a rounding rule (carry the ratio one place beyond its stated precision, round to nearest, ties up) that decides whether 4.505x breaches 4.50x; (4) a First Amendment, one year later, **restated the covenant levels** (5.25x stepping down to 4.00x). The base agreement alone gives the wrong answer for every date after March 2022, so a missing amendment is a real failure mode, not a hypothetical one.
 
 ## 1. Problem statement
 
 | | |
 |---|---|
 | **Who** | Covenant-monitoring analysts in credit administration at a mid-market lender; the credit officer who signs findings. |
-| **Task** | Each quarter, per borrower: find the financial covenants in a 100-300 page agreement, apply all amendments, extract inputs from the financials and compliance certificate, recompute ratios under the contract's own definitions, flag breaches and thin headroom. |
-| **Frequency** | Quarterly (some monthly). About 400 borrowers gives about 1,600 tests a year. Certificates are due about 45 days after quarter end, so about 60% of tests land in one 3-week window. |
-| **Cost today** | About 4.5 h per test, about 7,200 h a year, roughly 4 FTE, about $650K a year at $90/h loaded. The larger cost is a breach found late (lost early-intervention leverage) or a false pass. |
-| **Out of scope** | Waiver and reservation-of-rights decisions, legal notices, pricing and rating, non-financial covenants, equity-cure modelling (flagged only), pro-forma acquisition adjustments, any real client data. The system gives decision support, not legal advice. |
+| **Task** | Each quarter, per borrower: find the financial covenants in a 100-300 page agreement, apply every amendment, take inputs from the financials, recompute the ratios under the contract's own definitions, flag breaches and thin headroom. |
+| **Frequency** | Quarterly. About 400 borrowers gives about 1,600 tests a year; certificates are due about 45 days after quarter end, so about 60% land in one 3-week window. |
+| **Cost today** | About 4.5 h per test, about 7,200 h a year, roughly 4 FTE, about $650K a year at $90/h loaded. The larger cost is a breach found late or a false pass. |
+| **Out of scope** | Waiver and legal-notice decisions, pricing and rating, non-financial covenants, equity-cure and Acquisition-Period alternatives (recorded in each spec as "not modelled"), pro-forma adjustments, any real client data. Decision support, not legal advice. |
 
 ## 2. Solution design
 
-**Core idea.** The LLM compiles each agreement version once into a typed, human-approved `CovenantSpec`. A deterministic engine then executes that spec every quarter. The LLM never touches a number that enters a ratio without a verified source span. **Why AI at all:** definitions are bespoke natural language with cross-references ("as amended by Amendment No. 2"); that is the one step regex and templates cannot do.
+**Core idea.** The LLM interprets the contract **once per agreement version** into a typed `CovenantSpec` built from nine AST node types. Code verifies every quotation, a human signs the approval, and a deterministic engine computes every quarter. **Why AI at all:** definitions are bespoke prose with cross-references; reading them is the one step regex and templates cannot do. Where a register or form already gives structured data, no AI is needed.
 
 ![Architecture: where the AI, the code and the human each act](architecture.svg)
 
-| # | State | Actor | What happens / exit guard |
-|---|---|---|---|
-| A1 | INGESTED | Code | Immutable store, SHA-256, per-page canonical text with offsets (OCR flagged with confidence). |
-| A2 | LOCATED | AI + code | Hybrid retrieval finds covenant section, definitions, amendments; a deterministic cross-reference resolver loops until no capitalised term is undefined. |
-| A3 | EXTRACTED | **AI** | Extractor emits a `CovenantSpec` draft; each definition, threshold and constant carries a verbatim quote with page and offsets. |
-| A4 | GROUNDED | Code | `verify_span` (quote must equal page text at offsets), schema, no unsourced literals, no cycles, no threshold gaps. Fail: error fed back, max 2 retries, then ESCALATED. |
-| A5 | SPEC_REVIEW | **Human, gate 1** | Side-by-side PDF highlights and a plain-English rendering of the formula **generated from the AST by code, not the LLM**. Edits stored as a diff. Credit officer signs; second signer above an exposure limit. |
-| A6 | ACTIVE | Code | Spec frozen and hashed. Any change is a new version. |
-| B1-2 | FACTS_EXTRACTED | **AI** | Maps statement lines to the spec's declared inputs, with source table cell. It sees only the input list, never thresholds or prior results, so it cannot "aim" for a pass. |
-| B3 | FACTS_CHECKED | Code | Span check, scale and sign normalisation, tie-outs (debt components sum to total, balance identity, period match), prior-quarter restatement check. |
-| B4-5 | COMPUTED, CLASSIFIED | Code | `Decimal` evaluation of the AST with a trace per node; contract rounding applied; `classify()` returns PASS, PASS_THIN_HEADROOM, BREACH or INDETERMINATE. A missing or unverified input is INDETERMINATE, never PASS. |
-| B6 | REVIEW_GATE | **Human, gate 2** | Routed to a human: every BREACH or INDETERMINATE, thin headroom, any failed tie-out, first test after a spec change, plus a random 10% sample of clean passes to measure the silent error rate. Analyst confirms, overrides with written rationale, or rejects facts. |
-| B7-8 | SEALED, STALE | Code | Result, spec hash, fact ids and engine version appended to a hash-chained log. An amendment, restatement or revoked spec marks dependent results stale and re-queues them. |
-
-**Knowledge management.** Contract meaning lives in the approved, versioned `CovenantSpec` (code, not weights). Evidence lives in the hashed document store. Bank policy (thin-headroom %, sampling rate) lives in config. The LLM holds no knowledge the system depends on. **When knowledge becomes invalid:** (1) a new amendment or side letter creates a new spec version and supersedes the old; (2) a borrower restatement flags every result that used the old facts; (3) a revoked spec flags every dependent result `stale`; (4) stale results are re-run and a human sees any change in status. Nothing is silently edited.
-
-**Audit lineage.** Every output walks back: `status -> ratio -> TraceStep -> fact_id -> SourceSpan(doc_sha256, page, char_start:char_end, quote) -> clause text`, and via `spec_hash` to the approving human. An auditor can re-run the sealed inputs through the pinned `engine_version` and get the same result.
-
-## 3. Pydantic models (full code: `covenant_audit/models.py`, 15 tests passing)
-
-| Model | Role and enforced invariants |
-|---|---|
-| `SourceSpan` | `doc_sha256`, `page`, `char_start/end`, verbatim `quote`, optional `table_cell`; OCR spans must carry a confidence. `verify_span()` raises if the quote is not at the offsets, and only then sets `verified`. |
-| `Expr` (AST) | `Lit, Input, TermRef, Sum, Diff, Mul, Div, MinOf, MaxOf`. The LLM writes data, never code: no `eval`, no generated Python. Non-structural literals (e.g. the 25% cap) must cite a clause. |
-| `CovenantSpec` | Numerator, denominator, comparison, defined terms, inputs, threshold schedule, rounding rule. Rejects undeclared inputs, unresolved or cyclic terms, unsourced literals, schedule gaps. Cannot be VERIFIED with unverified spans or APPROVED without a human. Frozen, `content_hash()`. |
-| `FinancialFact` | `Decimal` value in whole units, currency, printed scale, period, source cell, tie-out checks; `verified` only if span and all tie-outs pass. |
-| `CovenantTestResult` | Raw and tested ratio, threshold, headroom, status, trace, review, `stale`, `prev_hash`. A validator rejects any status that contradicts the arithmetic, and requires review for BREACH/INDETERMINATE. |
-| `ReviewDecision` | Non-confirm decisions need a written rationale; `override_value` required iff overridden. |
-
-Money and ratios are `Decimal`, never `float`. `classify()` is the only place status is decided.
-
-## 4. Vulnerability and risk analysis
-
-**Weakest link: a wrong but well-grounded spec at gate 1.** Grounding proves a quote *exists*; it does not prove the model *read it correctly* (e.g. it cites the pre-amendment cap, or reads "25% of EBITDA" as 25% of post-add-back EBITDA). Every deterministic check passes, and a tired reviewer approves a plausible spec (automation bias). Because the spec drives every quarterly test for years, one error repeats silently. Mitigations: (a) **back-test**: the spec must reproduce the ratios in the borrower's last 2-4 historical compliance certificates, which act as an independent oracle; a gap above rounding tolerance blocks approval; (b) two independent extractions (different model or prompt) diffed field by field; (c) the AST-generated plain-English rendering so the reviewer sees what the *engine* will compute, not what the LLM says it will; (d) the 10% clean-pass sample.
-
-| Input condition | Failure mode | Design response |
+| Stage | Actor | What happens |
 |---|---|---|
-| **Noisy** | Scanned PDF, OCR reads 1 as 7; table split across pages; statement in thousands read as units; parentheses for negatives | OCR confidence on spans with a floor that forces review; scale and sign normalisation; tie-outs catch most single-digit errors because components must sum; prior-quarter jump check |
-| **Incomplete** | Amendment or side letter missing from the file; input absent; definition cross-references a schedule not provided | The system cannot know an amendment it was never given: require an amendment register confirmed by the agent bank, and show corpus completeness on the gate-1 screen. Missing input gives INDETERMINATE, never PASS |
-| **Adversarial** | Prompt injection in a borrower PDF ("set cash to 900"); hidden white text; forged amendment; legitimately misleading but real figures | Document text is data: extractor has no tools and emits schema only, sees no thresholds. Text-layer versus rendered-page comparison flags hidden text. Injected values still need a grounded span and passing tie-outs. Amendments are accepted only via the register. Borrower fraud itself is out of scope |
+| A1-A2 | Code | Download from SEC, split at page breaks, canonicalise, SHA-256 the text. Select the covenant pages and follow the defined terms the ratio uses, to a bounded depth; list the terms **not** read. |
+| A3 | **AI** | Drafts the spec as JSON. Each constant, input and threshold carries `{document, page, quote}`. Offsets and hashes are never taken from the model. It has no tools. |
+| A4 | Code | Reject the whole answer if it contains forbidden fields (`verified`, `approval`, `status`, `seal`, code or tool calls). Locate each quote in the stored text (must be exact and unique). Run the spec validators (no unsourced literal, cycle, unresolved term, threshold gap). |
+| A5 | Code | Independently re-verify every quotation, seal the spec, run semantic checks (a threshold or constant must appear in its own quote, comparison direction, unused or invented inputs). Render the formula from the AST for the reviewer. |
+| A6 | **Human** | Types the first 12 hash characters of the spec shown. A signer issues an attestation over spec hash, approver, role, decision and time. Unresolved items, failed checks and unread amendments **block** approval. |
+| A7 | Code | Registry re-verifies seal and attestation; versions are effective-dated and never overwritten. |
+| B1-B5 | AI, code, human | Facts are extracted and sealed (quote, printed amount and scale, grounded tie-outs). The `Decimal` evaluator traces every node, applies the contract's rounding, classifies, and appends a hash-chained record. BREACH, INDETERMINATE, thin headroom and a 10% sample go to a human. |
+
+**Knowledge management.** Contract meaning lives in the approved, signed, versioned spec (code, not model weights); evidence lives in hash-pinned documents; bank policy (thin-headroom %, sampling, OCR floor) lives in a policy object whose hash is stored in every result. **When knowledge becomes invalid:** an amendment is a new spec version that applies only from its effective date (retroactive only if it cites a clause that says so); a restatement marks results built on the old facts stale; a revoked spec blocks the periods it governed until a corrected one is approved, and never falls back to the older version. All are ledger events; nothing is edited.
+
+**Audit lineage.** `status -> ratio -> trace step -> fact -> statement line`, and `constant -> quotation -> (document hash, page, offsets)`. The pinned engine version re-runs sealed inputs to the same result (`replay_result`).
+
+## 3. What is built, and the evidence
+
+**Built and tested (246 tests, offline; mypy clean).** Typed models (`Decimal` only, frozen, tuples); AST evaluator with a per-node trace and the conditional node the real cash cap needed; trusted verification and seals; signed approval attestations; effective-dated registry; hash-chained ledger; SEC ingestion with hash-pinned pages; deterministic clause selection; strict extraction parser; reviewer view and CLI; an OpenRouter provider (timeouts, 429 retry, truncation checks, no tools offered). A script (`tools/mutation_check.py`) breaks 28 guarantees one at a time to check the tests notice; all were caught.
+
+**On the real agreement.** The approved spec (7 defined terms, 20 inputs, cited page and offsets) gives, for a synthetic borrower on 31 Dec 2022: EBITDA before clause (d) 184.0; add-back cap 20.0% x 184.0 = 36.8 (not the 40 claimed); netted cash MIN(120, 50) = 50 because revolver borrowings of 25 exceed 10; net funded debt 805; ratio 805 / 220.8 = **3.646x** against the amended **4.75x**: PASS, 23.2% headroom. The same inputs on 30 Jun 2023 face 4.00x and are PASS with thin headroom, which goes to review.
+
+**Not done, stated plainly.** (1) **No live model run**: no API key was available, so no genuine LLM extraction exists. The provider is tested against a fake transport only. (2) The extraction used in the demo is a **reference I had the coding assistant hand-write** from the real text; it is labelled "NOT A LIVE MODEL CALL". (3) The scorecard that checks an extraction against the contract's key facts was written by the same assistant, so a perfect reference score is circular; its tests show it fails on wrong extractions. (4) The demo approval is simulated. (5) Designed but not built: compliance-certificate back-test, two independent extractions diffed, hidden-text detection, amendment register, KMS signing and multi-signer approval, persistent ledger, OCR.
+
+## 4. Risks
+
+**Weakest link: a wrong but well-sourced spec at the approval gate.** A quotation can be real and the reading wrong (the wrong cap, the pre-amendment definition, numerator and denominator swapped). A test in the repository shows it: a swapped ratio passes every machine check, and only the readable formula exposes it. Because the spec drives every test for years, an error repeats. **Built:** semantic checks (e.g. 0.25 cited to a quote that says "20.0%" is refused), the AST-generated plain formula, signed approval bound to the displayed hash, a clean-pass sample, the scorecard. **Designed only:** back-test against the borrower's historical certificates, two extractions diffed.
+
+| Input condition | Failure mode | Response (built unless marked *designed*) |
+|---|---|---|
+| **Noisy** | Look-alike characters, "20 .0%" artefacts, scanned pages, scale errors | Canonicalised text; exact unique quotes; OCR pages refused; printed amount and scale checked; tie-outs must sum. OCR ingestion *designed*. |
+| **Incomplete** | Amendment not provided; terms referenced but not read; missing input | Known amendments listed, approval blocked if unread; unread terms reported; missing input is INDETERMINATE; no spec governs undated periods. Amendment register *designed*. |
+| **Adversarial** | Prompt injection in a document; invented or paraphrased quote; model supplying `verified` or an approval | Text is data; response schema has no tool field and forbidden keys reject the whole answer; quote must exist exactly; extractor and automated identities cannot approve; seals and attestations re-verified. Hidden-text detection *designed*. |
 
 | Risk | Handling |
 |---|---|
-| **Wrong answer** | Typed AST and `Decimal` engine; INDETERMINATE-by-default; two human gates; status-versus-arithmetic validator; sampled clean passes give a measurable error rate |
-| **Outdated rules** | Versioned spec; STALE protocol in section 2; spec shows its source document hash and date |
-| **Confidential data** | Borrower financials are material non-public information. Production needs a self-hosted or zero-retention model inside the lender's boundary. The prototype uses public or synthetic data only, because free OpenRouter models send data off-box |
-| **Liability** | The credit officer is accountable for each sealed finding; the system never sends notices or waives. The evidence bundle and spec hash show what was computed, from which text, approved by whom |
+| **Wrong answer** | Typed AST, `Decimal`, one `classify()`, results re-derived on construction; INDETERMINATE by default; two human gates; replay. |
+| **Outdated rules** | Versioned, effective-dated specs; amendment, restatement and revocation are different ledger events. |
+| **Confidential data** | The prototype uses public filings and synthetic data. Real borrower material needs a model inside the lender's boundary (a hosted free-tier model is not acceptable for it). |
+| **Liability** | The credit officer is accountable for each approval and finding; the system sends no notices. The development signer proves a record was not altered; it does **not** authenticate the approver. Production needs KMS signing and SSO identity. |
 
 ## 5. Alternatives considered and rejected
 
-1. **One long-context LLM call returns the ratio.** Rejected. LLM arithmetic is non-reproducible across runs, silent errors have no tie-out, and lineage is a post-hoc story, not a trace. It fails the "exact amount, cited clause" test.
-2. **Per-quarter RAG "chat with the contract".** Rejected. Definitions are re-interpreted each quarter, so the same covenant can be read differently in Q1 and Q3. There is no versioned knowledge and no proof of which clause version applied. Compile-once turns interpretation into a reviewed, hashed artefact.
-3. **Rules and templates only (regex, or a classifier over LMA/LSTA forms).** Rejected. It is exact but brittle: bespoke EBITDA definitions, cross-references and amendments break it, and every new agreement needs an engineer. Kept for the engine (the AST) and dropped for ingestion.
+1. **One long-context LLM call returns the ratio.** Rejected: arithmetic is non-reproducible, silent errors have no tie-out, lineage is a story rather than a trace.
+2. **Per-quarter RAG "chat with the contract".** Rejected: definitions are re-read each quarter, so Q1 and Q3 can differ; no versioned knowledge and no proof of which clause applied.
+3. **Rules and templates only.** Rejected: exact but brittle; the real agreement's conditional cash cap, sub-capped add-backs and rounding clause break any fixed template. Kept for the engine, dropped for ingestion.
 
-I also rejected routing by LLM self-reported confidence (uncalibrated; routing uses deterministic checks instead) and LLM-generated Python for the maths (unreviewable; the closed AST is).
+Also rejected: routing by LLM self-reported confidence (uncalibrated) and LLM-written Python for the maths (unreviewable; the closed AST is).
 
 ## 6. Before spending more time on this
 
-Validate the 4.5 h per test and the amendment-completeness assumption with two or three practitioners. Measure spec extraction on at least 10 real EDGAR agreements and report where it fails, scoring *meaning* against hand-built specs, since grounding alone cannot. Check whether lenders already have covenant tooling and what it lacks. Confirm model and data-residency terms with a real lender, and which loan system the sealed results must feed.
+Run live extractions with a real model on at least 10 agreements and publish the failures using the scorecard. Validate the 4.5 h per test and the amendment-completeness assumption with practitioners. Build the certificate back-test, since it is the only control that checks the *meaning* of a spec. Confirm data-residency terms and the loan system the results must feed.
 
 <div class="pagebreak"></div>
 
 ## Appendix: What you added beyond the AI
 
-Items in ⟦double brackets⟧ are placeholders only the author can confirm; replace or delete them before submitting.
+**Where AI helped.** Claude (Cursor cloud agent) wrote nearly all the code, tests and documents. Key prompts (excerpts): (1) *"Act as a Principal Agentic AI Architect... enforce strict separation between probabilistic nodes (LLM extraction, RAG) and deterministic execution engines (Pydantic, ratio math, rules)..."* (2) *"Do not assume that the existing implementation is correct merely because tests pass... The LLM must never perform financial calculations that determine the final covenant result."* (3) *"The LLM should interpret the contract, but the deterministic engine must remain the sole authority for financial calculations and covenant classification."*
 
-**Where AI helped.** Claude (Cursor cloud agent) drafted the state machine, the Pydantic schema, the 15 tests and this brief's wording. Key prompts: (1) *"Act as a Principal Agentic AI Architect... enforce strict separation between probabilistic nodes (LLM extraction, RAG) and deterministic engines (Pydantic, ratio math, rules); state where knowledge lives and the protocol when it becomes invalid; end-to-end lineage to offsets, pages and clause text."* (2) *"Provide a quantitative problem statement, a step-by-step state machine for Extractor, Rules Engine and Human Audit Gate, and the precise Pydantic models."* (3) *"Combine the approved text into one Markdown document that fits 4 pages."* ⟦add any research prompts, e.g. on EDGAR covenant language⟧
+**What was wrong, and how it was caught.**
 
-**What I rejected or corrected.**
+- *Verification that trusted flags.* The AI's first draft let a caller set `verified=True` or a tie-out `passed=True`, and hardcoded a 10% headroom rule. A review prompt I wrote made the AI reproduce six defects by running code; they became sealed artefacts, derived tie-outs and a policy object.
+- *A gap the AI found in its own fix.* While writing the prompt-injection test the AI saw that tie-out components were still the extractor's word, and made each one a quoted, summed source line.
+- *Four bugs the tests exposed:* a canonicaliser that mis-paired nested quotes, a clause search that ran out of budget before the cash definition, a false-positive "constant denominator" check, and an old test whose blanket import ban the new download code correctly broke. The AI narrowed that assertion, with a documented reason, instead of deleting it.
+- *Unsourced numbers.* The cost figures are the AI's estimates; I labelled them as such.
+- *Rejected designs:* LLM self-reported confidence as a routing signal (uncalibrated) and LLM-generated Python for the maths (unreviewable).
+- *Honesty limits I required:* no simulated model call may pass as live; the reference extraction and its scorecard are labelled as written by the AI.
 
-- *Unsourced figures.* The AI produced precise-looking cost numbers (4.5 h per test, $650K a year). I treated them as assumptions, labelled them "my estimates" and listed practitioner validation as a prerequisite, because an invented number presented as fact is unsafe in front of auditors.
-- *A hidden coupling.* The AI's first result validator hardcoded a 10% thin-headroom threshold instead of using the spec's policy value. I caught it in review and recorded it as a known limit; the status is decided only in `classify()`.
-- *A test written against its own schema.* The AI's cycle test used one-letter term names that the schema's key pattern rejects. The failing run exposed it, and the fix was to the test, not the validator.
-- *Self-reported LLM confidence as a routing signal* and *LLM-generated Python for the maths*: both rejected as unsafe for a regulated number (section 5). ⟦say how you knew, e.g. a source you read⟧
+**What came from me.** I chose covenant monitoring over rebate reconciliation. I set the rule that the LLM never touches a number in the ratio path, required the four audit questions (knowledge, lineage, weakest link, rejected alternatives) to drive the structure, and demanded a real public agreement and no pretending that a replay was a model. I required the development signer to be kept apart from a production one and not to be called identity authentication. I expected secondary sub-caps inside EBITDA add-backs to force dynamic sub-trees; the real filing confirmed it (a 20.0% cap, a conditional cash cap, a rounding clause). I chose to stay with this project after weighing alternatives.
 
-**What came from me.** I chose covenant monitoring over rebate reconciliation. I set the rule that the LLM never touches a number in the ratio path, and that "exact and auditable" and "probabilistic" parts be separated by typed contracts. I required the four audit questions (knowledge, lineage, weakest link, rejected alternatives) to drive the structure. I chose US/EDGAR so every example is public and re-runnable. ⟦add one insight from a real covenant document or practitioner, such as a definition you read that surprised you⟧ ⟦state which design ideas you adopted from the AI and why, e.g. the compliance-certificate back-test⟧
-
-**One concept I can defend live without AI: what "deterministic" does and does not guarantee.** Take a synthetic borrower: total debt 540, cash 40, net income-based EBITDA 100, add-backs 40, with add-backs capped at 25% of 100. Capped EBITDA is 100 + min(40, 25) = 125. Net debt is 540 - 40 = 500. Ratio = 500 / 125 = **4.00x** against a 4.50x maximum, headroom (4.50 - 4.00) / 4.50 = **11.1%**, so PASS. Without the cap the ratio would be 500 / 140 = 3.57x, an overstated pass. Rounding to two decimals happens before the comparison, so 4.504 is 4.50 and passes while 4.505 is 4.51 and breaches (round-half-up). `Decimal` is used because `float` cannot represent these values exactly. The limit I can explain: `verify_span` proves the quote exists at the offsets, and the validators prove the spec is internally consistent, but neither proves the spec *means* what the contract means. That gap is why gate 1, the back-test and the clean-pass sample exist.
+**One concept I can defend live without AI: what "deterministic" guarantees and what it does not.** Synthetic borrower: debt 540, cash 40, EBITDA 100, add-backs 40, add-backs capped at 25% of 100. Capped EBITDA = 100 + MIN(40, 25) = 125; net debt = 540 - 40 = 500; ratio 500 / 125 = **4.00x** against 4.50x, headroom 11.1%, PASS. Without the cap it would be 3.57x, an overstated pass. Rounding precedes the comparison, so 4.504 is 4.50 and passes while 4.505 is 4.51 and breaches (half-up). `Decimal` is used because binary floats cannot hold these values exactly. The limit: quotation checks prove a quote exists and the spec is consistent, not that it *means* what the contract means. That gap is why the human gate exists.

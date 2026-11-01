@@ -1,68 +1,77 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 446" font-family="Helvetica,Arial,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 446" font-family="Helvetica,Arial,sans-serif">
 <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#333"/></marker></defs>
 <defs><marker id="r" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#b00020"/></marker></defs>
 <defs><marker id="g" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#777"/></marker></defs>
-<text x="2" y="14" font-size="12.5" font-weight="bold" text-anchor="start">LANE A: compile contract (once per agreement or amendment)</text>
-<rect x="1" y="22" width="838" height="54" fill="#fff4e0" stroke="#c77700"/>
+<text x="2" y="14" font-size="12.5" font-weight="bold" text-anchor="start">LANE A: compile the contract (once per agreement or amendment)</text>
+<rect x="1" y="22" width="878" height="54" fill="#fff4e0" stroke="#c77700"/>
 <text x="6" y="47.0" font-size="11" font-weight="bold" fill="#c77700">AI</text>
 <text x="6" y="60.0" font-size="9" fill="#c77700">probabilistic</text>
-<rect x="1" y="78" width="838" height="54" fill="#e8f1fb" stroke="#1f5fa8"/>
+<rect x="1" y="78" width="878" height="54" fill="#e8f1fb" stroke="#1f5fa8"/>
 <text x="6" y="103.0" font-size="11" font-weight="bold" fill="#1f5fa8">CODE</text>
 <text x="6" y="116.0" font-size="9" fill="#1f5fa8">deterministic</text>
-<rect x="1" y="134" width="838" height="54" fill="#eaf6ea" stroke="#2c7a2c"/>
+<rect x="1" y="134" width="878" height="54" fill="#eaf6ea" stroke="#2c7a2c"/>
 <text x="6" y="159.0" font-size="11" font-weight="bold" fill="#2c7a2c">HUMAN</text>
 <text x="6" y="172.0" font-size="9" fill="#2c7a2c">audit gate</text>
-<rect x="74.0" y="85.0" width="138.0" height="40" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
-<text x="143.0" y="102.0" font-size="11.5" text-anchor="middle">A1 Hash, page text,</text>
-<text x="143.0" y="116.0" font-size="11.5" text-anchor="middle">offsets</text>
-<rect x="230.0" y="29.0" width="138.0" height="40" rx="4" fill="white" stroke="#c77700" stroke-width="1.6"/>
-<text x="299.0" y="46.0" font-size="11.5" text-anchor="middle">A2-3 Locate clauses,</text>
-<text x="299.0" y="60.0" font-size="11.5" text-anchor="middle">extract spec draft</text>
-<rect x="386.0" y="85.0" width="138.0" height="40" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
-<text x="455.0" y="102.0" font-size="11.5" text-anchor="middle">A4 verify_span +</text>
-<text x="455.0" y="116.0" font-size="11.5" text-anchor="middle">schema checks</text>
-<rect x="542.0" y="141.0" width="138.0" height="40" rx="4" fill="white" stroke="#2c7a2c" stroke-width="1.6"/>
-<text x="611.0" y="158.0" font-size="11.5" text-anchor="middle">A5 Gate 1: approve</text>
-<text x="611.0" y="172.0" font-size="11.5" text-anchor="middle">spec (back-test)</text>
-<rect x="698.0" y="85.0" width="138.0" height="40" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
-<text x="767.0" y="102.0" font-size="11.5" text-anchor="middle">A6 ACTIVE spec,</text>
-<text x="767.0" y="116.0" font-size="11.5" text-anchor="middle">frozen + hashed</text>
-<path d="M212.0,105.0 L221.0,105.0 L221.0,49.0 L230.0,49.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
-<path d="M368.0,49.0 L377.0,49.0 L377.0,105.0 L386.0,105.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
-<path d="M524.0,105.0 L533.0,105.0 L533.0,161.0 L542.0,161.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
-<path d="M680.0,161.0 L689.0,161.0 L689.0,105.0 L698.0,105.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
-<text x="838" y="240" font-size="12.5" font-weight="bold" text-anchor="end">LANE B: quarterly test (every borrower, every period)</text>
-<rect x="1" y="248" width="838" height="54" fill="#fff4e0" stroke="#c77700"/>
+<rect x="74.0" y="84.0" width="102.6" height="42" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
+<text x="125.3" y="101.0" font-size="10" text-anchor="middle">A1 Ingest SEC</text>
+<text x="125.3" y="114.0" font-size="10" text-anchor="middle">text, hash</text>
+<rect x="190.6" y="84.0" width="102.6" height="42" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
+<text x="241.9" y="101.0" font-size="10" text-anchor="middle">A2 Select</text>
+<text x="241.9" y="114.0" font-size="10" text-anchor="middle">clauses</text>
+<rect x="307.1" y="28.0" width="102.6" height="42" rx="4" fill="white" stroke="#c77700" stroke-width="1.6"/>
+<text x="358.4" y="45.0" font-size="10" text-anchor="middle">A3 LLM drafts</text>
+<text x="358.4" y="58.0" font-size="10" text-anchor="middle">spec (untrusted)</text>
+<rect x="423.7" y="84.0" width="102.6" height="42" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
+<text x="475.0" y="101.0" font-size="10" text-anchor="middle">A4 Parse, locate</text>
+<text x="475.0" y="114.0" font-size="10" text-anchor="middle">quotes, validate</text>
+<rect x="540.3" y="84.0" width="102.6" height="42" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
+<text x="591.6" y="101.0" font-size="10" text-anchor="middle">A5 Verify, seal,</text>
+<text x="591.6" y="114.0" font-size="10" text-anchor="middle">semantic checks</text>
+<rect x="656.9" y="140.0" width="102.6" height="42" rx="4" fill="white" stroke="#2c7a2c" stroke-width="1.6"/>
+<text x="708.1" y="157.0" font-size="10" text-anchor="middle">A6 Gate 1: signed</text>
+<text x="708.1" y="170.0" font-size="10" text-anchor="middle">approval</text>
+<rect x="773.4" y="84.0" width="102.6" height="42" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
+<text x="824.7" y="101.0" font-size="10" text-anchor="middle">A7 Registry</text>
+<text x="824.7" y="114.0" font-size="10" text-anchor="middle">(attestation ok)</text>
+<path d="M176.6,105.0 L183.6,105.0 L183.6,105.0 L190.6,105.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+<path d="M293.1,105.0 L300.1,105.0 L300.1,49.0 L307.1,49.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+<path d="M409.7,49.0 L416.7,49.0 L416.7,105.0 L423.7,105.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+<path d="M526.3,105.0 L533.3,105.0 L533.3,105.0 L540.3,105.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+<path d="M642.9,105.0 L649.9,105.0 L649.9,161.0 L656.9,161.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+<path d="M759.4,161.0 L766.4,161.0 L766.4,105.0 L773.4,105.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+<text x="878" y="240" font-size="12.5" font-weight="bold" text-anchor="end">LANE B: quarterly test (every borrower, every period)</text>
+<rect x="1" y="248" width="878" height="54" fill="#fff4e0" stroke="#c77700"/>
 <text x="6" y="273.0" font-size="11" font-weight="bold" fill="#c77700">AI</text>
 <text x="6" y="286.0" font-size="9" fill="#c77700">probabilistic</text>
-<rect x="1" y="304" width="838" height="54" fill="#e8f1fb" stroke="#1f5fa8"/>
+<rect x="1" y="304" width="878" height="54" fill="#e8f1fb" stroke="#1f5fa8"/>
 <text x="6" y="329.0" font-size="11" font-weight="bold" fill="#1f5fa8">CODE</text>
 <text x="6" y="342.0" font-size="9" fill="#1f5fa8">deterministic</text>
-<rect x="1" y="360" width="838" height="54" fill="#eaf6ea" stroke="#2c7a2c"/>
+<rect x="1" y="360" width="878" height="54" fill="#eaf6ea" stroke="#2c7a2c"/>
 <text x="6" y="385.0" font-size="11" font-weight="bold" fill="#2c7a2c">HUMAN</text>
 <text x="6" y="398.0" font-size="9" fill="#2c7a2c">audit gate</text>
-<rect x="74.0" y="255.0" width="138.0" height="40" rx="4" fill="white" stroke="#c77700" stroke-width="1.6"/>
-<text x="143.0" y="272.0" font-size="11.5" text-anchor="middle">B2 Extract facts</text>
-<text x="143.0" y="286.0" font-size="11.5" text-anchor="middle">from borrower pack</text>
-<rect x="230.0" y="311.0" width="138.0" height="40" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
-<text x="299.0" y="328.0" font-size="11.5" text-anchor="middle">B3 Span check,</text>
-<text x="299.0" y="342.0" font-size="11.5" text-anchor="middle">tie-outs, scale</text>
-<rect x="386.0" y="311.0" width="138.0" height="40" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
-<text x="455.0" y="328.0" font-size="11.5" text-anchor="middle">B4-5 Compute AST,</text>
-<text x="455.0" y="342.0" font-size="11.5" text-anchor="middle">classify</text>
-<rect x="542.0" y="367.0" width="138.0" height="40" rx="4" fill="white" stroke="#2c7a2c" stroke-width="1.6"/>
-<text x="611.0" y="384.0" font-size="11.5" text-anchor="middle">B6 Gate 2: breach,</text>
-<text x="611.0" y="398.0" font-size="11.5" text-anchor="middle">thin, 10% sample</text>
-<rect x="698.0" y="311.0" width="138.0" height="40" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
-<text x="767.0" y="328.0" font-size="11.5" text-anchor="middle">B7 Sealed,</text>
-<text x="767.0" y="342.0" font-size="11.5" text-anchor="middle">hash-chained log</text>
-<path d="M212.0,275.0 L221.0,275.0 L221.0,331.0 L230.0,331.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
-<path d="M368.0,331.0 L377.0,331.0 L377.0,331.0 L386.0,331.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
-<path d="M524.0,331.0 L533.0,331.0 L533.0,387.0 L542.0,387.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
-<path d="M680.0,387.0 L689.0,387.0 L689.0,331.0 L698.0,331.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
-<path d="M414.0,85.0 L414.0,77 L340.0,77 L340.0,69.0" stroke="#b00020" stroke-width="1.3" stroke-dasharray="4,3" fill="none" marker-end="url(#r)"/>
-<text x="370.0" y="41.0" font-size="10" fill="#b00020">fail: error fed back, retry x2</text>
-<path d="M767.0,125.0 L767.0,210 L143.0,210 L143.0,255.0" stroke="#777" stroke-width="1.3" stroke-dasharray="2,3" fill="none" marker-end="url(#g)"/>
-<text x="151.0" y="206" font-size="10" fill="#555">approved, hashed spec drives every quarterly test</text>
-<text x="420.0" y="433" font-size="10.5" fill="#b00020" text-anchor="middle">STALE: an amendment, restatement or revoked spec re-opens Lane A and re-queues dependent results</text>
+<rect x="74.0" y="254.0" width="102.6" height="42" rx="4" fill="white" stroke="#c77700" stroke-width="1.6"/>
+<text x="125.3" y="271.0" font-size="10" text-anchor="middle">B1 Extract facts</text>
+<text x="125.3" y="284.0" font-size="10" text-anchor="middle">(untrusted)</text>
+<rect x="190.6" y="310.0" width="102.6" height="42" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
+<text x="241.9" y="327.0" font-size="10" text-anchor="middle">B2 Verify, seal,</text>
+<text x="241.9" y="340.0" font-size="10" text-anchor="middle">tie-outs</text>
+<rect x="307.1" y="310.0" width="102.6" height="42" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
+<text x="358.4" y="327.0" font-size="10" text-anchor="middle">B3 Evaluate AST,</text>
+<text x="358.4" y="340.0" font-size="10" text-anchor="middle">round, classify</text>
+<rect x="423.7" y="366.0" width="102.6" height="42" rx="4" fill="white" stroke="#2c7a2c" stroke-width="1.6"/>
+<text x="475.0" y="383.0" font-size="10" text-anchor="middle">B4 Gate 2: review</text>
+<text x="475.0" y="396.0" font-size="10" text-anchor="middle">breach/thin/sample</text>
+<rect x="540.3" y="310.0" width="102.6" height="42" rx="4" fill="white" stroke="#1f5fa8" stroke-width="1.6"/>
+<text x="591.6" y="327.0" font-size="10" text-anchor="middle">B5 Sealed,</text>
+<text x="591.6" y="340.0" font-size="10" text-anchor="middle">hash-chained log</text>
+<path d="M176.6,275.0 L183.6,275.0 L183.6,331.0 L190.6,331.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+<path d="M293.1,331.0 L300.1,331.0 L300.1,331.0 L307.1,331.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+<path d="M409.7,331.0 L416.7,331.0 L416.7,387.0 L423.7,387.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+<path d="M526.3,387.0 L533.3,387.0 L533.3,331.0 L540.3,331.0" stroke="#333" stroke-width="1.4" fill="none" marker-end="url(#a)"/>
+<path d="M451.7,84.0 L451.7,77 L381.7,77 L381.7,70.0" stroke="#b00020" stroke-width="1.3" stroke-dasharray="4,3" fill="none" marker-end="url(#r)"/>
+<text x="532.3" y="42.0" font-size="10" fill="#b00020">fail: validation messages only,</text>
+<text x="532.3" y="55.0" font-size="10" fill="#b00020">max 2 attempts, then ESCALATED</text>
+<path d="M824.7,126.0 L824.7,210 L125.3,210 L125.3,254.0" stroke="#777" stroke-width="1.3" stroke-dasharray="2,3" fill="none" marker-end="url(#g)"/>
+<text x="133.3" y="206" font-size="10" fill="#555">approved, signed, hashed spec drives every quarterly test</text>
+<text x="440.0" y="433" font-size="10.5" fill="#b00020" text-anchor="middle">STALE: an amendment, restatement or revoked spec is a ledger event that re-opens Lane A and re-queues dependent results</text>
 </svg>
