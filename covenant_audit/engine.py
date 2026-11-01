@@ -18,6 +18,7 @@ from .models import (
     Div,
     Diff,
     FinancialFact,
+    IfGt,
     Input,
     Lit,
     MaxOf,
@@ -187,7 +188,7 @@ class Evaluator:
             )
         if isinstance(expr, TermRef):
             return self._eval_term(expr.name)
-        if isinstance(expr, (Sum, MinOf, MaxOf, Diff, Mul, Div)):
+        if isinstance(expr, (Sum, MinOf, MaxOf, Diff, Mul, Div, IfGt)):
             kids = children(expr)
             names = _child_names(expr)
             ids = tuple(self._eval(k, f"{node_id}/{expr.op}/{n}", term) for k, n in zip(kids, names))
@@ -221,4 +222,6 @@ def _child_names(expr: Any) -> tuple[str, ...]:
         return tuple(str(i) for i in range(len(expr.args)))
     if isinstance(expr, (Diff, Mul)):
         return ("left", "right")
+    if isinstance(expr, IfGt):
+        return ("left", "right", "then", "otherwise")
     return ("num", "den")

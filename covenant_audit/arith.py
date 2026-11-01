@@ -64,6 +64,9 @@ def apply_op(op: str, operands: Sequence[Decimal]) -> Decimal:
         return min(operands)
     if op == "max":
         return max(operands)
+    if op == "ifgt":
+        _arity(op, operands, 4)
+        return operands[2] if operands[0] > operands[1] else operands[3]
     if op == "term":
         _arity(op, operands, 1)
         return operands[0]

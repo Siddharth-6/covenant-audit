@@ -19,7 +19,9 @@ from typing import Iterable, Literal
 from pydantic import BaseModel
 
 from .base import FrozenModel, Sha256Hex, canonical_json, sha256_hex
+from .approval import SignedRejection
 from .models import (
+    ApprovalAttestation,
     CovenantKind,
     CovenantSpec,
     CovenantTestResult,
@@ -27,7 +29,7 @@ from .models import (
 )
 from .policy import BankPolicy
 
-EntryKind = Literal["policy", "spec_registered", "result", "invalidation", "review"]
+EntryKind = Literal["policy", "spec_registered", "approval", "rejection", "result", "invalidation", "review"]
 GENESIS = "0" * 64
 
 
@@ -76,6 +78,8 @@ class Checkpoint(FrozenModel):
 _PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     "policy": BankPolicy,
     "spec_registered": CovenantSpec,
+    "approval": ApprovalAttestation,
+    "rejection": SignedRejection,
     "result": CovenantTestResult,
     "invalidation": InvalidationEvent,
     "review": ReviewRecord,
@@ -116,6 +120,21 @@ class Ledger:
 
     def append_spec(self, spec: CovenantSpec, at: datetime | None = None) -> LedgerEntry:
         return self._append("spec_registered", spec.spec_id, spec, at)
+
+    def append_approval(self, attestation: ApprovalAttestation, at: datetime | None = None) -> LedgerEntry:
+        """Record the signed approval of a spec as its own auditable entry."""
+        return self._append("approval", attestation.approval_id, attestation, at or attestation.approved_at)
+
+    def append_rejection(self, rejection: SignedRejection, at: datetime | None = None) -> LedgerEntry:
+        a = rejection.attestation
+        return self._append("rejection", a.approval_id, rejection, at or a.approved_at)
+
+    def approvals_for(self, spec_id: str) -> list[ApprovalAttestation]:
+        specs = {s.content_hash(): s.spec_id for s in self._load("spec_registered")}
+        return [a for a in self._load("approval") if specs.get(a.spec_hash) == spec_id]
+
+    def rejections(self) -> list[SignedRejection]:
+        return self._load("rejection")
 
     def append_result(
         self, result: CovenantTestResult, policy: BankPolicy, at: datetime | None = None

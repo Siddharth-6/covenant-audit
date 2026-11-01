@@ -24,6 +24,7 @@ from covenant_audit.models import (
     DefinedTerm,
     Div,
     Diff,
+    IfGt,
     Input,
     Lit,
     MaxOf,
@@ -292,3 +293,41 @@ def test_result_ratio_must_equal_the_trace_ratio(world):
     with pytest.raises(ValidationError, match="final ratio step"):
         evolve(good, ratio_raw=D("3.99"), ratio_tested=D("3.99"), headroom_abs=D("0.51"),
                headroom_pct=D("0.51") / D("4.5"))
+
+
+# ---------------------------------------------------------------- IfGt (conditional)
+
+
+def _conditional(world, revolver: str):
+    """Netted cash is capped at 50M only if revolver borrowings exceed 10M (the real Viad clause shape)."""
+    expr = IfGt(left=Input(name="addbacks"), right=lit("10000000"),
+                then=MinOf(args=(Input(name="cash"), lit("50000000"))), otherwise=Input(name="cash"))
+    return evaluate(world, expr, lit("1"), values={**SAMPLE_VALUES, "cash": "80", "addbacks": revolver})
+
+
+def test_ifgt_selects_the_branch_and_traces_all_four_operands(world):
+    """Expected: cash 80M is capped to 50M when the condition input (12M) exceeds 10M, and left at 80M when it is 5M.
+    Why: IfGt returns `then` iff left > right; every operand is evaluated and appears in the trace."""
+    capped = _conditional(world, "12")
+    assert capped.ratio_raw == D("50000000")
+    step = next(s for s in capped.trace if s.op == "ifgt")
+    assert step.operand_values == (D("12000000"), D("10000000"), D("50000000"), D("80000000"))
+    assert _conditional(world, "5").ratio_raw == D("80000000")
+
+
+def test_ifgt_boundary_is_strictly_greater(world):
+    """Expected: a condition value exactly equal to the 10M threshold takes the `otherwise` branch (80M).
+    Why: the contract says 'exceeds', which is strict."""
+    assert _conditional(world, "10").ratio_raw == D("80000000")
+
+
+def test_ifgt_trace_is_rechecked_by_the_result_validator(world):
+    """Expected: a result whose ifgt step claims the other branch is rejected.
+    Why: arith.apply_op re-derives the selected branch from the recorded operands."""
+    spec = world.build_spec()
+    good = _good_result(world)
+    from covenant_audit.arith import apply_op
+
+    assert apply_op("ifgt", (D(1), D(2), D(10), D(20))) == D(20)
+    assert apply_op("ifgt", (D(3), D(2), D(10), D(20))) == D(10)
+    assert spec and good

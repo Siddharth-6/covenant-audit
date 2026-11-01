@@ -147,11 +147,23 @@ class MaxOf(FrozenModel):
     args: tuple[Expr, ...] = Field(min_length=2)  # floors, e.g. non-negative net debt
 
 
+class IfGt(FrozenModel):
+    """Conditional: `then` if left > right, otherwise `otherwise`. Needed for contract terms such as
+    "if revolver borrowings exceed $10,000,000, netted cash is capped at $50,000,000". All four branches
+    are evaluated and traced; only the selected value flows on."""
+
+    op: Literal["ifgt"] = "ifgt"
+    left: Expr
+    right: Expr
+    then: Expr
+    otherwise: Expr
+
+
 Expr = Annotated[
-    Union[Lit, Input, TermRef, Sum, Diff, Mul, Div, MinOf, MaxOf],
+    Union[Lit, Input, TermRef, Sum, Diff, Mul, Div, MinOf, MaxOf, IfGt],
     Field(discriminator="op"),
 ]
-for _m in (Sum, Diff, Mul, Div, MinOf, MaxOf):
+for _m in (Sum, Diff, Mul, Div, MinOf, MaxOf, IfGt):
     _m.model_rebuild()
 
 
@@ -163,6 +175,8 @@ def children(expr: Any) -> tuple[Any, ...]:
         return (expr.left, expr.right)
     if isinstance(expr, Div):
         return (expr.num, expr.den)
+    if isinstance(expr, IfGt):
+        return (expr.left, expr.right, expr.then, expr.otherwise)
     return ()
 
 
@@ -205,11 +219,36 @@ class ThresholdStep(FrozenModel):
         return self
 
 
+class ApprovalAttestation(FrozenModel):
+    """What a signer attested: this approver, in this role, made this decision about this exact spec
+    content at this time. Minted only by `approval.make_attestation`; verified by `approval.verify_approval`."""
+
+    approval_id: str
+    spec_hash: Sha256Hex
+    approver_id: str
+    role: Literal["credit_officer", "legal_reviewer"]
+    decision: Literal["approved", "rejected"]
+    approved_at: datetime
+    edits_from_draft: tuple[str, ...] = ()
+    signer_id: str
+    signature: Sha256Hex
+
+    @field_validator("approved_at")
+    @classmethod
+    def _aware(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("approved_at must be timezone-aware")
+        return v
+
+
 class Approval(FrozenModel):
+    """A human approval of a spec. Without a valid `attestation` it is only a claim."""
+
     approver_id: str
     role: Literal["credit_officer", "legal_reviewer"]
     approved_at: datetime
     edits_from_draft: tuple[str, ...] = ()  # JSON-pointer paths changed
+    attestation: ApprovalAttestation | None = None
 
     @field_validator("approved_at")
     @classmethod
@@ -253,6 +292,9 @@ class CovenantSpec(FrozenModel):
     effective_from: date  # first test date this version governs
     executed_on: date | None = None  # signing date of the amendment, if any
     retroactive_source: SourceSpan | None = None  # clause that makes an amendment retroactive
+    # Reviewed statements of what this spec deliberately does NOT model or how an ambiguous clause was
+    # read (e.g. "acquisition-period step-up not modelled"). Part of the sealed content, shown to the approver.
+    scope_notes: tuple[str, ...] = ()
     extractor_run_id: str
     status: SpecStatus = SpecStatus.DRAFT
     approvals: tuple[Approval, ...] = ()

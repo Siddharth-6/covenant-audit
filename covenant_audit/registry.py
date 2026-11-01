@@ -75,6 +75,9 @@ class SpecRegistry:
         chain.append(spec)
         if self._ledger is not None:
             self._ledger.append_spec(spec, at)
+            for approval in spec.approvals:
+                if approval.attestation is not None:
+                    self._ledger.append_approval(approval.attestation, at)
             if spec.is_retroactive:
                 self._ledger.record_retroactive_amendment(spec, at)
 

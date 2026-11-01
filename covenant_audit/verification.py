@@ -20,7 +20,9 @@ from typing import Literal, Sequence
 
 from pydantic import ValidationError
 
+from .approval import ApprovalAttestationError, ApprovalSigner, LocalDevApprovalSigner, make_attestation, verify_spec_approvals
 from .base import FrozenModel, Sha256Hex, content_hash, evolve, sha256_hex
+from .errors import SealError, VerificationError
 from .models import (
     Approval,
     CovenantSpec,
@@ -33,16 +35,8 @@ from .models import (
 from .policy import BankPolicy
 
 
-class VerificationError(Exception):
-    """Base class for every verification failure."""
-
-
 class SpanVerificationError(VerificationError):
     """A quotation could not be grounded in the stored source document."""
-
-
-class SealError(VerificationError):
-    """A seal is missing, forged, or no longer matches the artefact it was minted for."""
 
 
 class SpecNotApprovedError(VerificationError):
@@ -171,11 +165,21 @@ def _amounts_in(quote: str) -> set[Decimal]:
 
 class SourceVerifier:
     def __init__(
-        self, store: DocumentStore, *, key: bytes | None = None, verifier_id: str = "local-verifier-v1"
+        self,
+        store: DocumentStore,
+        *,
+        key: bytes | None = None,
+        verifier_id: str = "local-verifier-v1",
+        approval_signer: ApprovalSigner | None = None,
     ) -> None:
         self._store = store
         self._key = key if key is not None else secrets.token_bytes(32)
         self.verifier_id = verifier_id
+        # Default: a development signer derived from the seal key. It is NOT identity authentication
+        # (see approval.py); inject a KMS-backed signer in production.
+        self.approval_signer: ApprovalSigner = approval_signer or LocalDevApprovalSigner(
+            hmac.new(self._key, b"approval-signer-key", hashlib.sha256).digest()
+        )
 
     # -- primitives ---------------------------------------------------------
 
@@ -253,6 +257,11 @@ class SourceVerifier:
             raise SealError(f"spec {spec.spec_id} is a DRAFT")
         if require_approved and spec.status is not SpecStatus.APPROVED:
             raise SpecNotApprovedError(f"spec {spec.spec_id} is {spec.status.value}, not approved")
+        if spec.status is SpecStatus.APPROVED:
+            try:
+                verify_spec_approvals(spec, self.approval_signer)
+            except ApprovalAttestationError as exc:
+                raise SealError(f"spec {spec.spec_id}: approval not valid: {exc}") from exc
 
     # -- facts --------------------------------------------------------------
 
@@ -318,13 +327,19 @@ class SourceVerifier:
 
 def approve_spec(spec: CovenantSpec, approval: Approval, verifier: SourceVerifier) -> CovenantSpec:
     """Gate 1. Only a verified, unmodified spec can be approved, and the approver must be a
-    person other than the extraction run."""
+    person other than the extraction run. The trusted signer attests the decision (see approval.py)."""
     verifier.check_spec(spec, require_approved=False)
     if spec.status is not SpecStatus.VERIFIED:
         raise VerificationError(f"only VERIFIED specs can be approved, got {spec.status.value}")
     if approval.approver_id == spec.extractor_run_id:
         raise VerificationError("the extraction run cannot approve its own output")
-    return evolve(spec, status=SpecStatus.APPROVED, approvals=(approval,))
+    if approval.attestation is not None:
+        raise VerificationError("a caller cannot supply an attestation; only the trusted signer mints it")
+    try:
+        attestation = make_attestation(spec, approval, verifier.approval_signer)
+    except ApprovalAttestationError as exc:
+        raise VerificationError(str(exc)) from exc
+    return evolve(spec, status=SpecStatus.APPROVED, approvals=(evolve(approval, attestation=attestation),))
 
 
 class ExtractionBatch(FrozenModel):
