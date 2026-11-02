@@ -1,10 +1,14 @@
 # Auditable Covenant Compliance
 
-> **The LLM interprets the contract. A trusted verifier checks its evidence. A human approves the specification. A deterministic engine is the only thing that computes the ratio and classifies the covenant.**
+[![Tests](https://github.com/Siddharth-6/covenant-audit/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/Siddharth-6/covenant-audit/actions/workflows/tests.yml)
 
-A take-home prototype for commercial-loan financial-covenant monitoring. It now covers the whole path on a **real public SEC credit agreement**: ingestion, deterministic clause selection, LLM extraction into a typed `CovenantSpec`, source verification, a signed human approval, effective-dated registration, and a deterministic, traced calculation recorded in a hash-chained ledger.
+> **The LLM interprets the contract. A trusted verifier checks its evidence. A human reviews and approves the specification. A deterministic engine is the only component that computes the ratio and classifies the covenant.**
 
-Borrower financial data is **synthetic**. The credit agreement is real and public.
+A take-home prototype for commercial-loan financial-covenant monitoring. It demonstrates the workflow on a **real public SEC credit agreement** using a recorded, hand-authored reference extraction: document ingestion, deterministic clause selection, typed `CovenantSpec` construction, source verification, a simulated approval, effective-dated registration, and deterministic calculation with an auditable trace.
+
+**Important:** No live LLM inference has been performed in this repository. The recorded provider replays a reference authored from the public agreement text; it is not a model response. Borrower financial data is **synthetic**. The credit agreement is real and public.
+
+**Submission brief:** [Read the four-page PDF](docs/brief_final.pdf) · [LaTeX source](docs/brief.tex) · [Demo walkthrough](docs/WALKTHROUGH.md)
 
 ## Read this first: what ran, and what did not
 
@@ -258,7 +262,7 @@ Documents are treated as untrusted input. The model is given text and returns te
 
 ## Submission documents
 
-`docs/brief_final.pdf` is the four-page brief to submit (source `docs/brief.tex`; rebuild with `cd docs && pdflatex -jobname=brief_final brief.tex`, twice). `docs/SUBMISSION_CHECKLIST.md` lists what remains for you to do (live run, public repo, LLM logs, verifying the appendix). `docs/WALKTHROUGH.md` is a rehearsal guide for defending the project live. `python3 -m covenant_audit.cli score` checks any extraction against the contract's key facts so a live-model run can be reported honestly; its checklist was written by the same coding assistant as the reference extraction, so a perfect score on the reference proves nothing by itself (the tests show it fails on wrong extractions).
+`docs/brief_final.pdf` is the four-page brief to submit (source `docs/brief.tex`; rebuild with `cd docs && pdflatex -jobname=brief_final brief.tex`, twice). This repository is public at [Siddharth-6/covenant-audit](https://github.com/Siddharth-6/covenant-audit). `docs/SUBMISSION_CHECKLIST.md` lists the remaining author-side tasks, including exporting the LLM logs and verifying every first-person statement in the appendix. `docs/WALKTHROUGH.md` is a rehearsal guide for defending the project live. `python3 -m covenant_audit.cli score` checks any extraction against the contract's key facts so a live-model run can be reported honestly; its checklist was written by the same coding assistant as the reference extraction, so a perfect score on the reference proves nothing by itself (the tests show it fails on wrong extractions).
 
 ## Repository structure
 
