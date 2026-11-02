@@ -21,7 +21,7 @@ Rebuild with `cd docs && pdflatex -jobname=brief_final brief.tex` (run it twice)
 | Item | Status |
 |---|---|
 | Repo with README, how to run, examples tested | Done (`README.md`, 246 tests, `python3 -m covenant_audit.cli demo ...`) |
-| **Link must be publicly accessible** | **You must do this.** Check the repository is public, then open it in a private browser window and run the README's install and test commands from a fresh clone. |
+| **Link must be publicly accessible** | **Done.** The public repository is [Siddharth-6/covenant-audit](https://github.com/Siddharth-6/covenant-audit). GitHub Actions has completed the test, mutation and type-check workflow successfully. As a final personal check, open the repo in a private browser window and try the README install/test commands from a fresh clone. |
 | Say which examples are made up | Done: borrower data is synthetic; the agreement is real and public. |
 | Note which model was used | **Open.** No live model was run. See step A below. |
 
@@ -31,7 +31,7 @@ Rebuild with `cd docs && pdflatex -jobname=brief_final brief.tex` (run it twice)
 
 ## What only you can do, in priority order
 
-**A. Run a live extraction and report it honestly (largest gap).**
+**A. Optional: run a live extraction if you have API access and time.** This is not required to make the recorded prototype reproducible. No live model call has been made so far; do not claim extraction accuracy unless you actually run and evaluate a model.
 
 ```bash
 export OPENROUTER_API_KEY=<your key>
@@ -41,7 +41,7 @@ python3 -m covenant_audit.cli score        # which key contract facts did it cap
 python3 -m covenant_audit.cli review       # what blocks approval, and why?
 ```
 
-Whatever happens is a result. A model that fails on the conditional cash cap, quotes badly or flags unresolved items is a better story than a perfect run, as long as you report it truthfully. Free models are rate-limited and may not follow the schema. Then:
+Whatever happens is a result. A model that fails on the conditional cash cap, quotes badly or flags unresolved items is useful evidence if reported truthfully. Free models are rate-limited and may not follow the schema. If you run it:
 - add a few lines to brief section 3 ("Not done" becomes "Done, with these failures") and the README limitations;
 - save the `score` output in `docs/`;
 - try 2-3 more runs or models if you can, and report the spread.
@@ -58,7 +58,7 @@ Whatever happens is a result. A model that fails on the conditional cash cap, qu
 
 | You can say | You must not say |
 |---|---|
-| "I built a deterministic covenant engine with signed approvals and a hash-chained ledger, with 246 offline tests" | "An LLM extracted this covenant" (no live run exists) |
+| "I built a deterministic covenant engine with development-signed approval attestations and a hash-chained ledger, with 246 offline tests" | "An LLM extracted this covenant" (no live run exists) |
 | "The extraction pipeline runs on a real SEC agreement" | "The demo approval was a credit officer's review" (it was simulated) |
 | "I used a reference extraction, clearly labelled, because no API key was available" | "The scorecard validates the extraction" (it is circular for the reference) |
 | "The development signer shows tamper evidence, not identity" | "Approvals are authenticated" |
