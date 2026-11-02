@@ -7,3 +7,8 @@ docs/*.out
 __pycache__/
 .pytest_cache/
 .venv/
+
+# Local credentials and environment overrides
+.env
+.env.*
+!.env.example
