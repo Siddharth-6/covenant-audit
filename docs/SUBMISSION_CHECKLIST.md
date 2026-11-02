@@ -6,7 +6,7 @@ The assignment (Section 3) asks for three things. This maps each to what exists 
 
 | Item | Status |
 |---|---|
-| Brief, 4 pages including the 1-page appendix | **Done.** Submit `docs/brief_latex.pdf` (pdfLaTeX, Letter). Source: `docs/brief.tex`. A Markdown rendering is in `docs/brief.md` and `docs/brief.pdf` (A4); they carry the same content. |
+| Brief, 4 pages including the 1-page appendix | **Done.** Submit `docs/brief_final.pdf` (pdfLaTeX, Letter, no header or footer). Source: `docs/brief.tex`. |
 | Area explored, what surprised you | Done (real-agreement findings: 20.0% cap, conditional cash cap, rounding clause, restating amendment) |
 | Problem statement: who, task, how often, cost | Done. Cost figures are labelled as estimates; validate them with a practitioner if you can. |
 | Architecture diagram with human and AI roles; alternatives rejected | Done |
@@ -14,7 +14,7 @@ The assignment (Section 3) asks for three things. This maps each to what exists 
 | Things to consider before spending more time | Done |
 | Appendix: where AI helped, what you rejected, what came from you, one thing you can defend | Done, but **you must verify every first-person claim is true of you** (see below) |
 
-Rebuild the LaTeX PDF with `cd docs && pdflatex -jobname=brief_latex brief.tex` (the job name matters: without it the output is written to `brief.pdf`, which is the separate Markdown/Chrome rendering). Rebuild that one with `python3 docs/build_pdf.py`. Check each is still 4 pages.
+Rebuild with `cd docs && pdflatex -jobname=brief_final brief.tex` (run it twice) and check it is still 4 pages. A name can be added under the title by setting `\authorname` near the top of `brief.tex`; the assignment does not ask for one, and the form identifies you.
 
 ## 2. Prototype (optional but strong)
 
@@ -46,7 +46,7 @@ Whatever happens is a result. A model that fails on the conditional cash cap, qu
 - save the `score` output in `docs/`;
 - try 2-3 more runs or models if you can, and report the spread.
 
-**B. Verify the appendix.** It says "I chose...", "I required...", "I expected...". Keep only what is true of you, and rephrase the rest. The brief says the AI wrote nearly all the code; keep that. The evaluators are testing whether you can separate your thinking from the AI's.
+**B. Verify the appendix.** It has been rewritten to claims the chat logs support: the prompts quoted are verbatim from your messages; the compile-once design, the choice of the Viad agreement and the conditional AST node are credited to the AI. Read it once more and change anything that is not true of you. The evaluators are testing whether you can separate your thinking from the AI's.
 
 **C. Read the contract passages** listed at the bottom of `docs/WALKTHROUGH.md`, then rehearse the walkthrough with no tools.
 

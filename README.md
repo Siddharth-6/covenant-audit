@@ -258,7 +258,7 @@ Documents are treated as untrusted input. The model is given text and returns te
 
 ## Submission documents
 
-`docs/brief_latex.pdf` is the four-page brief to submit (source `docs/brief.tex`; the same content is in `docs/brief.md` and `docs/brief.pdf`). `docs/SUBMISSION_CHECKLIST.md` lists what remains for you to do (live run, public repo, LLM logs, verifying the appendix). `docs/WALKTHROUGH.md` is a rehearsal guide for defending the project live. `python3 -m covenant_audit.cli score` checks any extraction against the contract's key facts so a live-model run can be reported honestly; its checklist was written by the same coding assistant as the reference extraction, so a perfect score on the reference proves nothing by itself (the tests show it fails on wrong extractions).
+`docs/brief_final.pdf` is the four-page brief to submit (source `docs/brief.tex`; rebuild with `cd docs && pdflatex -jobname=brief_final brief.tex`, twice). `docs/SUBMISSION_CHECKLIST.md` lists what remains for you to do (live run, public repo, LLM logs, verifying the appendix). `docs/WALKTHROUGH.md` is a rehearsal guide for defending the project live. `python3 -m covenant_audit.cli score` checks any extraction against the contract's key facts so a live-model run can be reported honestly; its checklist was written by the same coding assistant as the reference extraction, so a perfect score on the reference proves nothing by itself (the tests show it fails on wrong extractions).
 
 ## Repository structure
 
@@ -276,5 +276,5 @@ data/extraction/    the reference response (hand-authored, labelled)
 data/demo/          synthetic borrower financials
 tools/              build_sources.py (SEC re-derivation), author_reference_extraction.py, mutation_check.py
 tests/              original core tests + test_approval.py;  tests/extraction/ for the extraction workflow
-docs/               four-page brief (unchanged in this phase), demo_transcript.txt
+docs/               four-page brief (brief.tex -> brief_final.pdf), demo_transcript.txt, WALKTHROUGH.md, SUBMISSION_CHECKLIST.md
 ```
